@@ -673,24 +673,26 @@ def get_plugin_info(plugin_path):
                     plugin_data = yaml.safe_load(f)
                     name = plugin_data.get('name', 'Unknown')
                     version = plugin_data.get('version', 'Unknown')
-                    return name, version
+                    main_class = plugin_data.get('main', 'Unknown')
+                    return name, version, main_class
             except KeyError:
                 try:
                     with jar.open('META-INF/plugin.yml') as f:
                         plugin_data = yaml.safe_load(f)
                         name = plugin_data.get('name', 'Unknown')
                         version = plugin_data.get('version', 'Unknown')
-                        return name, version
+                        main_class = plugin_data.get('main', 'Unknown')
+                        return name, version, main_class
                 except KeyError:
                     name = plugin_path.stem
                     if name.endswith('.disabled'):
                         name = name[:-9]
-                    return name, 'Unknown'
+                    return name, 'Unknown', 'Unknown'
     except Exception as e:
         name = plugin_path.stem
         if name.endswith('.disabled'):
             name = name[:-9]
-        return name, 'Unknown'
+        return name, 'Unknown', 'Unknown'
 
 def manage_plugins():
     if not PLUGINS_DIR.exists():
@@ -750,6 +752,201 @@ def manage_plugins():
                 new_path = old_path.parent / new_name
                 old_path.rename(new_path)
                 print(f"Enabled: {plugin['name']}")
+        
+        print("\nPlugin states changed successfully!")
+        print("")
+        
+    except ValueError:
+        print("Invalid input. Please enter numbers separated by spaces.\n")
+    except Exception as e:
+        print(f"Error toggling plugins: {e}\n")
+
+def get_plugin_dependencies(plugin_path):
+    try:
+        with zipfile.ZipFile(plugin_path, 'r') as jar:
+            plugin_yml_locations = ['plugin.yml', 'META-INF/plugin.yml']
+            plugin_data = {}
+            
+            for location in plugin_yml_locations:
+                try:
+                    with jar.open(location) as f:
+                        plugin_data = yaml.safe_load(f)
+                        break
+                except KeyError:
+                    continue
+            
+            if not plugin_data:
+                return {'depend': [], 'softdepend': []}
+            
+            depend = plugin_data.get('depend', [])
+            softdepend = plugin_data.get('softdepend', [])
+            
+            if isinstance(depend, str):
+                depend = [depend] if depend else []
+            if isinstance(softdepend, str):
+                softdepend = [softdepend] if softdepend else []
+            
+            return {
+                'depend': depend,
+                'softdepend': softdepend
+            }
+            
+    except Exception as e:
+        return {'depend': [], 'softdepend': []}
+
+def check_plugin_dependencies(plugins, plugin_to_disable):
+    plugin_name = plugin_to_disable['name']
+    
+    hard_dependents = []
+    soft_dependents = []
+    
+    for plugin in plugins:
+        if plugin['enabled'] and plugin['name'] != plugin_name:
+            dependencies = get_plugin_dependencies(plugin['path'])
+            
+            if plugin_name in dependencies['depend']:
+                hard_dependents.append(plugin)
+            
+            if plugin_name in dependencies['softdepend']:
+                soft_dependents.append(plugin)
+    
+    return {
+        'hard_dependents': hard_dependents,
+        'soft_dependents': soft_dependents
+    }
+
+def format_dependency_warning(plugin, hard_dependents, soft_dependents):
+    message = []
+    
+    if hard_dependents:
+        message.append(f"\nCRITICAL WARNING: {plugin['name']} is REQUIRED by:")
+        for dependent in hard_dependents:
+            message.append(f"   - {dependent['name']} (version {dependent['version']})")
+        message.append("\nThese plugins WILL STOP WORKING if you disable this plugin!")
+        message.append("This may cause SERVER CRASHES or errors!")
+    
+    if soft_dependents:
+        message.append(f"\nWARNING: {plugin['name']} is optionally used by:")
+        for dependent in soft_dependents:
+            message.append(f"   - {dependent['name']} (version {dependent['version']})")
+        message.append("\nThese plugins may lose functionality or not work perfectly!")
+    
+    return "\n".join(message)
+
+def manage_plugins_with_dependencies():
+    if not PLUGINS_DIR.exists():
+        print("\nPlugins directory not found!")
+        print("")
+        return
+    
+    plugin_files = list(PLUGINS_DIR.glob("*.jar")) + list(PLUGINS_DIR.glob("*.jar.disabled"))
+    
+    if not plugin_files:
+        print("\nNo plugins found!")
+        print("")
+        return
+    
+    plugins = []
+    for plugin_path in plugin_files:
+        name, version, main_class = get_plugin_info(plugin_path)
+        enabled = not plugin_path.name.endswith('.disabled')
+        plugins.append({
+            'path': plugin_path,
+            'name': name,
+            'version': version,
+            'main_class': main_class,
+            'enabled': enabled
+        })
+    
+    print("\n" + format_plugins_table(plugins))
+    
+    choice = input("\nDo you want to toggle these plugins? (Y/N): ").strip().upper()
+    
+    if choice != 'Y':
+        print("")
+        return
+    
+    try:
+        selected = input("Enter the numbers of the plugin you want to toggle (e.g., '1 2 3'): ").strip()
+        if not selected:
+            print("No plugins selected.\n")
+            return
+        
+        indices = [int(i) for i in selected.split()]
+        indices = [i for i in indices if 1 <= i <= len(plugins)]
+        
+        if not indices:
+            print("No valid plugin numbers selected.\n")
+            return
+        
+        plugins_to_disable = []
+        plugins_to_enable = []
+        
+        for idx in indices:
+            plugin = plugins[idx-1]
+            if plugin['enabled']:
+                plugins_to_disable.append(plugin)
+            else:
+                plugins_to_enable.append(plugin)
+        
+        for plugin in plugins_to_enable:
+            old_path = plugin['path']
+            new_name = old_path.name.replace(".disabled", "")
+            new_path = old_path.parent / new_name
+            old_path.rename(new_path)
+            print(f"Enabled: {plugin['name']}")
+        
+        for plugin in plugins_to_disable:
+            dependencies = check_plugin_dependencies(plugins, plugin)
+            hard_dependents = dependencies['hard_dependents']
+            soft_dependents = dependencies['soft_dependents']
+            
+            if hard_dependents or soft_dependents:
+                warning_message = format_dependency_warning(plugin, hard_dependents, soft_dependents)
+                print(warning_message)
+                
+                if hard_dependents:
+                    print(f"\nYou have two options:")
+                    print("1. Disable the dependent plugins first, then disable this one")
+                    print("2. Force disable this plugin anyway (RISKY - may cause server issues)")
+                    
+                    while True:
+                        choice = input("\nChoose option (1/2) or 'C' to cancel: ").strip().upper()
+                        if choice == '1':
+                            print("Please disable the dependent plugins first:")
+                            for dependent in hard_dependents:
+                                print(f"  - {dependent['name']}")
+                            print("Then try disabling this plugin again.")
+                            continue
+                        elif choice == '2':
+                            confirm = input("Are you sure? This may break other plugins or crash the server! (Y/N): ").strip().upper()
+                            if confirm == 'Y':
+                                old_path = plugin['path']
+                                new_path = old_path.parent / (old_path.name + ".disabled")
+                                old_path.rename(new_path)
+                                print(f"Force disabled: {plugin['name']}")
+                                break
+                            else:
+                                continue
+                        elif choice == 'C':
+                            print(f"Cancelled disabling: {plugin['name']}")
+                            break
+                        else:
+                            print("Invalid choice. Please enter 1, 2, or C.")
+                else:
+                    confirm = input(f"\nDo you still want to disable {plugin['name']}? (Y/N): ").strip().upper()
+                    if confirm == 'Y':
+                        old_path = plugin['path']
+                        new_path = old_path.parent / (old_path.name + ".disabled")
+                        old_path.rename(new_path)
+                        print(f"Disabled: {plugin['name']}")
+                    else:
+                        print(f"Skipped: {plugin['name']}")
+            else:
+                old_path = plugin['path']
+                new_path = old_path.parent / (old_path.name + ".disabled")
+                old_path.rename(new_path)
+                print(f"Disabled: {plugin['name']}")
         
         print("\nPlugin states changed successfully!")
         print("")
@@ -1901,7 +2098,7 @@ def compare_versions(version1, version2):
 
 def show_help():
     print("=" * 50)
-    print("     Minecraft Server Management Tool (v2.6)")
+    print("     Minecraft Server Management Tool (v2.7)")
     print("=" * 50)
     print("")
     print("A comprehensive command-line tool for managing")
@@ -1958,7 +2155,7 @@ def main():
     elif sys.argv[1] == "--dump":
         dump_logs()
     elif sys.argv[1] == "--plugins":
-        manage_plugins()
+        manage_plugins_with_dependencies()
     elif sys.argv[1] == "--rollback":
         rollback_version()
     elif sys.argv[1] == "--get":
