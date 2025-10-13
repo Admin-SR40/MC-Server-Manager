@@ -2114,11 +2114,10 @@ def check_self_update():
             update_info = json.loads(response.read().decode())
         
         latest_version = update_info.get("latest_version")
-        download_url = update_info.get("download_url")
         expected_md5 = update_info.get("md5")
         release_date = update_info.get("date", "Unknown")
         
-        if not latest_version or not download_url or not expected_md5:
+        if not latest_version or not expected_md5:
             print("Error: Invalid update information format.\n")
             return False
         
@@ -2134,7 +2133,7 @@ def check_self_update():
             print("Update canceled.")
             return False
         
-        return download_and_update_script(download_url, expected_md5)
+        return download_and_update_script(expected_md5)
         
     except urllib.error.URLError as e:
         print(f"Network error: Could not check for updates - {e}\n")
@@ -2143,45 +2142,20 @@ def check_self_update():
         print(f"Error checking for updates: {e}\n")
         return False
 
-def compare_script_versions(current, latest):
-    try:
-        current_parts = [int(x) for x in current.split('.')]
-        latest_parts = [int(x) for x in latest.split('.')]
-        
-        max_len = max(len(current_parts), len(latest_parts))
-        current_parts.extend([0] * (max_len - len(current_parts)))
-        latest_parts.extend([0] * (max_len - len(latest_parts)))
-        
-        for i in range(max_len):
-            if current_parts[i] < latest_parts[i]:
-                return -1
-            elif current_parts[i] > latest_parts[i]:
-                return 1
-        return 0
-    except:
-        return -1
-
-def download_and_update_script(download_url, expected_md5):
-    print(f"\nDownloading update from: {download_url}")
+def download_and_update_script(expected_md5):
+    script_url = "https://raw.githubusercontent.com/Admin-SR40/MC-Server-Manager/refs/heads/main/start.sh"
     
-    temp_file = None
+    print(f"\nDownloading update from: {script_url}")
+    
     try:
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.new')
-        temp_path = temp_file.name
-        temp_file.close()
+        with urllib.request.urlopen(script_url, timeout=30) as response:
+            script_content = response.read()
         
-        with urllib.request.urlopen(download_url, timeout=30) as response:
-            file_data = response.read()
-        
-        with open(temp_path, 'wb') as f:
-            f.write(file_data)
+        file_hash = hashlib.md5()
+        file_hash.update(script_content)
+        actual_md5 = file_hash.hexdigest()
         
         print("Verifying file integrity...")
-        with open(temp_path, 'rb') as f:
-            file_hash = hashlib.md5()
-            while chunk := f.read(8192):
-                file_hash.update(chunk)
-            actual_md5 = file_hash.hexdigest()
         
         if actual_md5 != expected_md5:
             print(f"MD5 verification failed!")
@@ -2189,7 +2163,6 @@ def download_and_update_script(download_url, expected_md5):
             print(f"Got: {actual_md5}")
             print("\nThe downloaded file may be corrupted or tampered with.")
             print("Update aborted for security reasons.")
-            os.unlink(temp_path)
             return False
         
         print("MD5 verification passed.\n")
@@ -2204,12 +2177,16 @@ def download_and_update_script(download_url, expected_md5):
         except Exception as e:
             print(f"Warning: Could not create backup: {e}")
         
-        shutil.move(temp_path, new_script)
+        with open(new_script, 'wb') as f:
+            f.write(script_content)
         
         try:
             if platform.system() != "Windows":
                 os.chmod(new_script, 0o755)
-            
+        except Exception as e:
+            print(f"Warning: Could not set executable permissions: {e}")
+        
+        try:
             if platform.system() == "Windows":
                 os.remove(current_script)
                 shutil.move(new_script, current_script)
@@ -2217,7 +2194,7 @@ def download_and_update_script(download_url, expected_md5):
                 os.replace(new_script, current_script)
             
             print("\nUpdate completed successfully!\n")
-            print(f"Script has been updated to the latest version.")
+            print(f"Script has been updated from version {SCRIPT_VERSION} to the latest version.")
             print("Please run the script again to use the new version.")
             print("")
             
@@ -2244,9 +2221,10 @@ def download_and_update_script(download_url, expected_md5):
             
     except Exception as e:
         print(f"Error during update process: {e}\n")
-        if temp_file and os.path.exists(temp_path):
+        new_script = Path(__file__).resolve().with_suffix('.sh.new')
+        if new_script.exists():
             try:
-                os.unlink(temp_path)
+                new_script.unlink()
             except:
                 pass
         return False
