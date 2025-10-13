@@ -1702,6 +1702,203 @@ def rollback_version():
         if temp_dir.exists():
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+def disable_all_plugins():
+    if not PLUGINS_DIR.exists():
+        print("Plugins directory not found.")
+        return False
+    
+    plugin_files = list(PLUGINS_DIR.glob("*.jar"))
+    if not plugin_files:
+        print("No plugins found to disable.")
+        return True
+    
+    disabled_count = 0
+    for plugin_path in plugin_files:
+        if not plugin_path.name.endswith('.disabled'):
+            new_path = plugin_path.parent / (plugin_path.name + ".disabled")
+            try:
+                plugin_path.rename(new_path)
+                disabled_count += 1
+            except Exception as e:
+                print(f"Error disabling {plugin_path.name}: {e}")
+                return False
+    
+    print(f"Successfully disabled {disabled_count} plugins.")
+    return True
+
+def upgrade_server():
+    print("\n" + "=" * 50)
+    print("         Server Core Upgrade")
+    print("=" * 50)
+    
+    try:
+        config = load_config()
+        current_version = config.get("version", "unknown")
+    except:
+        print("Error: Could not determine current server version.")
+        print("Please ensure the server is properly configured.\n")
+        return
+    
+    print(f"Current server version: {current_version}")
+    
+    try:
+        current_major = '.'.join(current_version.split('.')[:2])
+    except:
+        print("Error: Could not parse current version format.")
+        return
+    
+    backup_choice = input("\nDo you want to create a backup before upgrading? (Y/N): ").strip().upper()
+    if backup_choice == "Y":
+        print("Creating backup...")
+        backup_version()
+    
+    available_versions = []
+    if BUNDLES_DIR.exists():
+        for version_dir in BUNDLES_DIR.iterdir():
+            if version_dir.is_dir():
+                core_zip = version_dir / "core.zip"
+                if core_zip.exists():
+                    version_name = version_dir.name
+                    try:
+                        version_major = '.'.join(version_name.split('.')[:2])
+                        if (compare_versions(version_name, current_version) >= 0 and 
+                            version_major == current_major):
+                            available_versions.append(version_name)
+                    except:
+                        continue
+    
+    if not available_versions:
+        print(f"\nNo compatible versions found for upgrade.")
+        print(f"Current version: {current_version}")
+        print(f"Looking for versions with major version {current_major} or higher.\n")
+        return
+    
+    sorted_versions = sorted(
+        available_versions, 
+        key=lambda v: [int(n) for n in v.split('.')], 
+        reverse=True
+    )
+    
+    print(f"\nAvailable upgrade versions (compatible with {current_major}.x):")
+    print("=" * 30)
+    for i, version in enumerate(sorted_versions, 1):
+        status = "↑ NEWER" if compare_versions(version, current_version) > 0 else "= CURRENT"
+        print(f"{i}. {version} {status}")
+    print("=" * 30)
+    
+    try:
+        selection = input("\nSelect a version to upgrade to (number): ").strip()
+        if not selection:
+            print("No selection made.\n")
+            return
+        
+        index = int(selection) - 1
+        if index < 0 or index >= len(sorted_versions):
+            print("Invalid selection.")
+            return
+        
+        selected_version = sorted_versions[index]
+        print(f"Selected version: {selected_version}")
+        
+        if selected_version == current_version:
+            print("Selected version is the same as current version.")
+            reinstall = input("Do you want to reinstall the current version? (Y/N): ").strip().upper()
+            if reinstall != "Y":
+                print("Upgrade canceled.\n")
+                return
+        
+        if check_for_updates(selected_version):
+            update_choice = input("\nNewer build available. Download now? (Y/N): ").strip().upper()
+            if update_choice == "Y":
+                download_version(selected_version)
+        
+        show_version_info(selected_version)
+        
+        confirm = input(f"\nAre you sure you want to upgrade from {current_version} to {selected_version}? (Y/N): ").strip().upper()
+        if confirm != "Y":
+            print("Upgrade canceled.\n")
+            return
+        
+        print("\nUpgrading server core...")
+        
+        core_zip_path = BUNDLES_DIR / selected_version / "core.zip"
+        
+        if not core_zip_path.exists():
+            print(f"Error: Core package not found for version {selected_version}")
+            return
+        
+        temp_jar_dir = BASE_DIR / "temp_jar"
+        if temp_jar_dir.exists():
+            shutil.rmtree(temp_jar_dir)
+        temp_jar_dir.mkdir()
+        
+        try:
+            with zipfile.ZipFile(core_zip_path, 'r') as zipf:
+                zipf.extractall(temp_jar_dir)
+            
+            core_jar_temp = temp_jar_dir / "core.jar"
+            if not core_jar_temp.exists():
+                print("Error: core.jar not found in the package.")
+                return
+            
+            if SERVER_JAR.exists():
+                backup_jar = BASE_DIR / "core.jar.backup"
+                shutil.copy2(SERVER_JAR, backup_jar)
+                print("Backed up current core.jar")
+            
+            shutil.copy2(core_jar_temp, SERVER_JAR)
+            print("Core upgraded successfully.")
+            
+            config = configparser.ConfigParser()
+            config.read(CONFIG_FILE)
+            if "SERVER" in config:
+                config["SERVER"]["version"] = selected_version
+                with open(CONFIG_FILE, "w") as f:
+                    config.write(f)
+                print(f"Updated configuration to version {selected_version}")
+            
+        except Exception as e:
+            print(f"Error during core upgrade: {e}")
+            return
+        finally:
+            if temp_jar_dir.exists():
+                shutil.rmtree(temp_jar_dir)
+        
+        plugin_choice = input("\nDo you want to disable all plugins for data safety? (Y/N): ").strip().upper()
+        if plugin_choice == "Y":
+            if disable_all_plugins():
+                print("All plugins have been disabled.")
+            else:
+                print("Failed to disable some plugins.")
+        else:
+            print("Plugins left unchanged.")
+        
+        print("\nServer upgrade completed successfully!")
+        print("Please review your plugin compatibility before starting the server.\n")
+        
+    except ValueError:
+        print("Invalid input. Please enter a number.\n")
+    except Exception as e:
+        print(f"Error during upgrade process: {e}\n")
+
+def compare_versions(version1, version2):
+    try:
+        v1_parts = [int(x) for x in version1.split('.')]
+        v2_parts = [int(x) for x in version2.split('.')]
+        
+        max_len = max(len(v1_parts), len(v2_parts))
+        v1_parts.extend([0] * (max_len - len(v1_parts)))
+        v2_parts.extend([0] * (max_len - len(v2_parts)))
+        
+        for i in range(max_len):
+            if v1_parts[i] > v2_parts[i]:
+                return 1
+            elif v1_parts[i] < v2_parts[i]:
+                return -1
+        return 0
+    except:
+        return 0
+
 def show_help():
     print("=" * 50)
     print("     Minecraft Server Management Tool (v2.5)")
@@ -1728,6 +1925,7 @@ def show_help():
     print("  --rollback        Rollback to a previous backup")
     print("  --delete <ver>    Delete specified version from bundles")
     print("  --change <ver>    Switch to specified version")
+    print("  --upgrade         Upgrade server core to compatible version")
     print("  --cleanup         Clean up server files to free up space")
     print("  --dump            Create a compressed dump of log files")
     print("  --help            Show this help message")
@@ -1772,6 +1970,8 @@ def main():
         reset_worlds()
     elif sys.argv[1] == "--new":
         create_new_server()
+    elif sys.argv[1] == "--upgrade":  # 新增的升级命令
+        upgrade_server()
     elif sys.argv[1] == "--help":
         show_help()
     else:
