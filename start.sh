@@ -15,6 +15,7 @@ import json
 import urllib.request
 import fnmatch
 import hashlib
+import tempfile
 from pathlib import Path
 
 try:
@@ -22,6 +23,8 @@ try:
 except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
+
+SCRIPT_VERSION = "2.8"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -2096,9 +2099,161 @@ def compare_versions(version1, version2):
     except:
         return 0
 
+def check_self_update():
+    print("\n" + "=" * 50)
+    print("                Self Update Check")
+    print("=" * 50)
+    
+    print(f"\nCurrent script version: {SCRIPT_VERSION}")
+    print("Checking for updates...\n")
+    
+    update_url = "https://raw.githubusercontent.com/Admin-SR40/MC-Server-Manager/refs/heads/main/update.json"
+    
+    try:
+        with urllib.request.urlopen(update_url, timeout=10) as response:
+            update_info = json.loads(response.read().decode())
+        
+        latest_version = update_info.get("latest_version")
+        download_url = update_info.get("download_url")
+        expected_md5 = update_info.get("md5")
+        release_date = update_info.get("date", "Unknown")
+        
+        if not latest_version or not download_url or not expected_md5:
+            print("Error: Invalid update information format.\n")
+            return False
+        
+        print(f"Latest version available: {latest_version} (Released: {release_date})")
+        
+        if compare_script_versions(SCRIPT_VERSION, latest_version) >= 0:
+            print("You are already running the latest version.\n")
+            return True
+        
+        print(f"\nNew version {latest_version} is available!")
+        confirm = input("Do you want to download and update? (Y/N): ").strip().upper()
+        if confirm != "Y":
+            print("Update canceled.")
+            return False
+        
+        return download_and_update_script(download_url, expected_md5)
+        
+    except urllib.error.URLError as e:
+        print(f"Network error: Could not check for updates - {e}\n")
+        return False
+    except Exception as e:
+        print(f"Error checking for updates: {e}\n")
+        return False
+
+def compare_script_versions(current, latest):
+    try:
+        current_parts = [int(x) for x in current.split('.')]
+        latest_parts = [int(x) for x in latest.split('.')]
+        
+        max_len = max(len(current_parts), len(latest_parts))
+        current_parts.extend([0] * (max_len - len(current_parts)))
+        latest_parts.extend([0] * (max_len - len(latest_parts)))
+        
+        for i in range(max_len):
+            if current_parts[i] < latest_parts[i]:
+                return -1
+            elif current_parts[i] > latest_parts[i]:
+                return 1
+        return 0
+    except:
+        return -1
+
+def download_and_update_script(download_url, expected_md5):
+    print(f"\nDownloading update from: {download_url}")
+    
+    temp_file = None
+    try:
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.new')
+        temp_path = temp_file.name
+        temp_file.close()
+        
+        with urllib.request.urlopen(download_url, timeout=30) as response:
+            file_data = response.read()
+        
+        with open(temp_path, 'wb') as f:
+            f.write(file_data)
+        
+        print("Verifying file integrity...")
+        with open(temp_path, 'rb') as f:
+            file_hash = hashlib.md5()
+            while chunk := f.read(8192):
+                file_hash.update(chunk)
+            actual_md5 = file_hash.hexdigest()
+        
+        if actual_md5 != expected_md5:
+            print(f"MD5 verification failed!")
+            print(f"Expected: {expected_md5}")
+            print(f"Got: {actual_md5}")
+            print("\nThe downloaded file may be corrupted or tampered with.")
+            print("Update aborted for security reasons.")
+            os.unlink(temp_path)
+            return False
+        
+        print("MD5 verification passed.\n")
+        
+        current_script = Path(__file__).resolve()
+        backup_script = current_script.with_suffix('.sh.backup')
+        new_script = current_script.with_suffix('.sh.new')
+        
+        try:
+            shutil.copy2(current_script, backup_script)
+            print(f"Backup created: {backup_script}")
+        except Exception as e:
+            print(f"Warning: Could not create backup: {e}")
+        
+        shutil.move(temp_path, new_script)
+        
+        try:
+            if platform.system() != "Windows":
+                os.chmod(new_script, 0o755)
+            
+            if platform.system() == "Windows":
+                os.remove(current_script)
+                shutil.move(new_script, current_script)
+            else:
+                os.replace(new_script, current_script)
+            
+            print("\nUpdate completed successfully!\n")
+            print(f"Script has been updated to the latest version.")
+            print("Please run the script again to use the new version.")
+            print("")
+            
+            return True
+            
+        except Exception as e:
+            print(f"\nFailed to replace the current script: {e}")
+            print("This is usually due to file permission issues or the script being in use.")
+            print("\nManual replacement required:")
+            print("=" * 40)
+            
+            if platform.system() == "Windows":
+                print("Please perform the following steps manually:")
+                print(f"1. Delete the current script: {current_script}")
+                print(f"2. Rename '{new_script}' to '{current_script.name}'")
+            else:
+                print("Please run these commands manually:")
+                print(f"  rm '{current_script}'")
+                print(f"  mv '{new_script}' '{current_script}'")
+                print(f"  chmod +x '{current_script}'")
+            
+            print("=" * 40)
+            return False
+            
+    except Exception as e:
+        print(f"Error during update process: {e}\n")
+        if temp_file and os.path.exists(temp_path):
+            try:
+                os.unlink(temp_path)
+            except:
+                pass
+        return False
+
 def show_help():
     print("=" * 50)
-    print("     Minecraft Server Management Tool (v2.7)")
+    print("     Minecraft Server Management Tool (v2.8)")
     print("=" * 50)
     print("")
     print("A comprehensive command-line tool for managing")
@@ -2125,6 +2280,7 @@ def show_help():
     print("  --upgrade         Upgrade server core to compatible version")
     print("  --cleanup         Clean up server files to free up space")
     print("  --dump            Create a compressed dump of log files")
+    print("  --version         Check for script updates and update if available")
     print("  --help            Show this help message")
     print("")
 
@@ -2169,6 +2325,8 @@ def main():
         create_new_server()
     elif sys.argv[1] == "--upgrade":
         upgrade_server()
+    elif sys.argv[1] == "--version":
+        check_self_update()
     elif sys.argv[1] == "--help":
         show_help()
     else:
