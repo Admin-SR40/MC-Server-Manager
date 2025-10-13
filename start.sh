@@ -2099,6 +2099,28 @@ def compare_versions(version1, version2):
     except:
         return 0
 
+def compare_script_versions(current, latest):
+    """
+    Compare two script version strings
+    Returns -1 if current < latest, 0 if equal, 1 if current > latest
+    """
+    try:
+        current_parts = [int(x) for x in current.split('.')]
+        latest_parts = [int(x) for x in latest.split('.')]
+        
+        max_len = max(len(current_parts), len(latest_parts))
+        current_parts.extend([0] * (max_len - len(current_parts)))
+        latest_parts.extend([0] * (max_len - len(latest_parts)))
+        
+        for i in range(max_len):
+            if current_parts[i] < latest_parts[i]:
+                return -1
+            elif current_parts[i] > latest_parts[i]:
+                return 1
+        return 0
+    except Exception as e:
+        print(f"Error comparing versions: {e}")
+
 def check_self_update():
     print("\n" + "=" * 50)
     print("                Self Update Check")
