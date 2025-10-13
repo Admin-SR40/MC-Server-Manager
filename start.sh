@@ -1901,7 +1901,7 @@ def compare_versions(version1, version2):
 
 def show_help():
     print("=" * 50)
-    print("     Minecraft Server Management Tool (v2.5)")
+    print("     Minecraft Server Management Tool (v2.6)")
     print("=" * 50)
     print("")
     print("A comprehensive command-line tool for managing")
@@ -1970,7 +1970,7 @@ def main():
         reset_worlds()
     elif sys.argv[1] == "--new":
         create_new_server()
-    elif sys.argv[1] == "--upgrade":  # 新增的升级命令
+    elif sys.argv[1] == "--upgrade":
         upgrade_server()
     elif sys.argv[1] == "--help":
         show_help()
