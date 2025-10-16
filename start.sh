@@ -24,7 +24,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "2.8"
+SCRIPT_VERSION = "2.9"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -51,6 +51,111 @@ BASE_EXCLUDE_LIST = [
     "temp_jar",
     "info.txt"
 ]
+
+def check_server_requirements():
+    print("Checking server requirements...")
+    
+    port_available = check_port_availability()
+    
+    java_valid = check_java_installation()
+    
+    permissions_ok = check_file_permissions()
+    
+    return port_available, java_valid, permissions_ok
+
+def check_port_availability():
+    port = 25565
+    
+    if SERVER_PROPERTIES.exists():
+        try:
+            with open(SERVER_PROPERTIES, 'r') as f:
+                for line in f:
+                    if line.strip().startswith('server-port='):
+                        port_str = line.split('=')[1].strip()
+                        if port_str.isdigit():
+                            port = int(port_str)
+                        break
+        except Exception as e:
+            print(f"Error reading server.properties: {e}")
+    
+    try:
+        import socket
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1)
+            result = s.connect_ex(('localhost', port))
+            if result == 0:
+                print(f"Port {port} is already in use")
+                return False
+            else:
+                print(f"Port {port} is available")
+                return True
+    except Exception as e:
+        print(f"Error checking port {port}: {e}")
+        return False
+
+def check_java_installation():
+    try:
+        config = load_config()
+        java_path = config["java_path"]
+        
+        if not Path(java_path).exists():
+            print(f"Java path not found: {java_path}")
+            return False
+        
+        result = subprocess.run(
+            [java_path, "-version"],
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+            timeout=5
+        )
+        
+        output = result.stderr or result.stdout
+        if "version" in output.lower():
+            print("Java installation is valid")
+            return True
+        else:
+            print("Java installation appears invalid")
+            return False
+            
+    except subprocess.TimeoutExpired:
+        print("Java version check timed out")
+        return False
+    except Exception as e:
+        print(f"Error checking Java installation: {e}")
+        return False
+
+def check_file_permissions():
+    required_dirs = [
+        BASE_DIR / "logs",
+        BASE_DIR / "worlds", 
+        BASE_DIR / "plugins",
+        BASE_DIR / "config"
+    ]
+    
+    for dir_path in required_dirs:
+        try:
+            dir_path.mkdir(parents=True, exist_ok=True)
+            
+            test_file = dir_path / ".write_test"
+            try:
+                with open(test_file, 'w') as f:
+                    f.write("test")
+                test_file.unlink()
+            except Exception as e:
+                print(f"No write permission in {dir_path.name} directory")
+                return False
+                
+        except Exception as e:
+            print(f"Error accessing {dir_path.name} directory: {e}")
+            return False
+    
+    if not SERVER_JAR.exists():
+        print(f"Server core file not found: {SERVER_JAR}")
+        return False
+    
+    print("File permissions are valid")
+    return True
 
 def truncate_text(text, max_length):
     if len(text) > max_length:
@@ -1710,6 +1815,13 @@ def dump_logs():
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 def start_server():
+    
+    port_ok, java_ok, permissions_ok = check_server_requirements()
+    
+    if not all([port_ok, java_ok, permissions_ok]):
+        print("\nServer requirements check failed. Please fix the issues above.")
+        print("")
+    
     show_info()
     
     if not check_and_accept_eula():
@@ -2253,7 +2365,7 @@ def download_and_update_script(expected_md5):
 
 def show_help():
     print("=" * 50)
-    print("     Minecraft Server Management Tool (v2.8)")
+    print("     Minecraft Server Management Tool (v2.9)")
     print("=" * 50)
     print("")
     print("A comprehensive command-line tool for managing")
