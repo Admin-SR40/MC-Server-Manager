@@ -24,7 +24,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "2.9"
+SCRIPT_VERSION = "3.0"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -2038,10 +2038,13 @@ def disable_all_plugins():
     print(f"Successfully disabled {disabled_count} plugins.")
     return True
 
-def upgrade_server():
+def upgrade_server(force=False):
     print("\n" + "=" * 50)
     print("         Server Core Upgrade")
     print("=" * 50)
+    
+    if force:
+        print("\nForce mode: Showing all available versions regardless of compatibility.\n")
     
     try:
         config = load_config()
@@ -2071,18 +2074,25 @@ def upgrade_server():
                 core_zip = version_dir / "core.zip"
                 if core_zip.exists():
                     version_name = version_dir.name
-                    try:
-                        version_major = '.'.join(version_name.split('.')[:2])
-                        if (compare_versions(version_name, current_version) >= 0 and 
-                            version_major == current_major):
-                            available_versions.append(version_name)
-                    except:
-                        continue
+                    if force:
+                        available_versions.append(version_name)
+                    else:
+                        try:
+                            version_major = '.'.join(version_name.split('.')[:2])
+                            if (compare_versions(version_name, current_version) >= 0 and 
+                                version_major == current_major):
+                                available_versions.append(version_name)
+                        except:
+                            continue
     
     if not available_versions:
-        print(f"\nNo compatible versions found for upgrade.")
-        print(f"Current version: {current_version}")
-        print(f"Looking for versions with major version {current_major} or higher.\n")
+        if force:
+            print(f"\nNo versions found in bundles directory.")
+        else:
+            print(f"\nNo compatible versions found for upgrade.")
+            print(f"Current version: {current_version}")
+            print(f"Looking for versions with major version {current_major} or higher.")
+            print('Use "--upgrade force" to show all available versions.\n')
         return
     
     sorted_versions = sorted(
@@ -2091,10 +2101,30 @@ def upgrade_server():
         reverse=True
     )
     
-    print(f"\nAvailable upgrade versions (compatible with {current_major}.x):")
+    if force:
+        print(f"\nAll available versions:")
+    else:
+        print('\nUse "--upgrade force" to show all available versions.')
+        print(f"Available upgrade versions (compatible with {current_major}.x):")
+    
     print("=" * 30)
     for i, version in enumerate(sorted_versions, 1):
-        status = "↑ NEWER" if compare_versions(version, current_version) > 0 else "= CURRENT"
+        if force:
+            try:
+                version_major = '.'.join(version.split('.')[:2])
+                if version_major != current_major:
+                    status = "! INCOMPATIBLE"
+                elif compare_versions(version, current_version) > 0:
+                    status = "↑ NEWER"
+                elif compare_versions(version, current_version) == 0:
+                    status = "= CURRENT"
+                else:
+                    status = "↓ OLDER"
+            except:
+                status = "? UNKNOWN"
+        else:
+            status = "↑ NEWER" if compare_versions(version, current_version) > 0 else "= CURRENT"
+        
         print(f"{i}. {version} {status}")
     print("=" * 30)
     
@@ -2111,6 +2141,28 @@ def upgrade_server():
         
         selected_version = sorted_versions[index]
         print(f"Selected version: {selected_version}")
+        
+        if force:
+            try:
+                selected_major = '.'.join(selected_version.split('.')[:2])
+                if selected_major != current_major:
+                    print(f"\nWARNING: Major version mismatch!")
+                    print(f"Current: {current_version} (major {current_major})")
+                    print(f"Selected: {selected_version} (major {selected_major})")
+                    print("This upgrade may cause world corruption or plugin incompatibility!")
+                    confirm = input("\nAre you sure you want to continue? (Y/N): ").strip().upper()
+                    if confirm != "Y":
+                        print("Upgrade canceled.\n")
+                        return
+                elif compare_versions(selected_version, current_version) < 0:
+                    print(f"\nWARNING: Downgrading from {current_version} to {selected_version}")
+                    print("This may cause data loss or compatibility issues!")
+                    confirm = input("\nAre you sure you want to continue? (Y/N): ").strip().upper()
+                    if confirm != "Y":
+                        print("Upgrade canceled.\n")
+                        return
+            except:
+                pass
         
         if selected_version == current_version:
             print("Selected version is the same as current version.")
@@ -2229,12 +2281,22 @@ def compare_script_versions(current, latest):
     except Exception as e:
         print(f"Error comparing versions: {e}")
 
-def check_self_update():
+def check_self_update(force=False):
     print("\n" + "=" * 50)
     print("                Self Update Check")
     print("=" * 50)
     
     print(f"\nCurrent script version: {SCRIPT_VERSION}")
+    
+    if force:
+        print("\nForce mode: Bypassing version check, will download latest version directly.")
+        confirm = input("\nDo you want to download the latest version from GitHub? (Y/N): ").strip().upper()
+        if confirm == "Y":
+            return download_latest_version()
+        else:
+            print("Download canceled.")
+            return False
+    
     print("Checking for updates...\n")
     
     update_url = "https://raw.githubusercontent.com/Admin-SR40/MC-Server-Manager/refs/heads/main/update.json"
@@ -2254,7 +2316,8 @@ def check_self_update():
         print(f"Latest version available: {latest_version} (Released: {release_date})")
         
         if compare_script_versions(SCRIPT_VERSION, latest_version) >= 0:
-            print("You are already running the latest version.\n")
+            print("You are already running the latest version.")
+            print('You can use "--version force" to download the latest version.\n')
             return True
         
         print(f"\nNew version {latest_version} is available!")
@@ -2272,30 +2335,39 @@ def check_self_update():
         print(f"Error checking for updates: {e}\n")
         return False
 
-def download_and_update_script(expected_md5):
+def download_latest_version():
     script_url = "https://raw.githubusercontent.com/Admin-SR40/MC-Server-Manager/refs/heads/main/start.sh"
+    update_url = "https://raw.githubusercontent.com/Admin-SR40/MC-Server-Manager/refs/heads/main/update.json"
     
-    print(f"\nDownloading update from: {script_url}")
+    print(f"\nDownloading latest version from: {script_url}")
     
     try:
+        with urllib.request.urlopen(update_url, timeout=10) as response:
+            update_info = json.loads(response.read().decode())
+        
+        expected_md5 = update_info.get("md5")
+        latest_version = update_info.get("latest_version", "Unknown")
+        
+        if not expected_md5:
+            print("Warning: Could not verify file integrity - no MD5 hash available.")
+        
         with urllib.request.urlopen(script_url, timeout=30) as response:
             script_content = response.read()
         
-        file_hash = hashlib.md5()
-        file_hash.update(script_content)
-        actual_md5 = file_hash.hexdigest()
-        
-        print("Verifying file integrity...")
-        
-        if actual_md5 != expected_md5:
-            print(f"MD5 verification failed!")
-            print(f"Expected: {expected_md5}")
-            print(f"Got: {actual_md5}")
-            print("\nThe downloaded file may be corrupted or tampered with.")
-            print("Update aborted for security reasons.")
-            return False
-        
-        print("MD5 verification passed.\n")
+        if expected_md5:
+            print("Verifying file integrity...")
+            file_hash = hashlib.md5()
+            file_hash.update(script_content)
+            actual_md5 = file_hash.hexdigest()
+            
+            if actual_md5 != expected_md5:
+                print(f"MD5 verification failed!")
+                print(f"Expected: {expected_md5}")
+                print(f"Got: {actual_md5}")
+                print("\nThe downloaded file may be corrupted or tampered with.")
+                print("Update aborted for security reasons.")
+                return False
+            print("MD5 verification passed.\n")
         
         current_script = Path(__file__).resolve()
         backup_script = current_script.with_suffix('.sh.backup')
@@ -2323,8 +2395,8 @@ def download_and_update_script(expected_md5):
             else:
                 os.replace(new_script, current_script)
             
-            print("\nUpdate completed successfully!\n")
-            print(f"Script has been updated from version {SCRIPT_VERSION} to the latest version.")
+            print("\nUpdate completed successfully!")
+            print(f"Script has been updated to version {latest_version}.")
             print("Please run the script again to use the new version.")
             print("")
             
@@ -2361,7 +2433,7 @@ def download_and_update_script(expected_md5):
 
 def show_help():
     print("=" * 50)
-    print("     Minecraft Server Management Tool (v2.9)")
+    print("     Minecraft Server Management Tool (v3.0)")
     print("=" * 50)
     print("")
     print("A comprehensive command-line tool for managing")
@@ -2432,9 +2504,15 @@ def main():
     elif sys.argv[1] == "--new":
         create_new_server()
     elif sys.argv[1] == "--upgrade":
-        upgrade_server()
+        if len(sys.argv) > 2 and sys.argv[2].lower() == "force":
+            upgrade_server(force=True)
+        else:
+            upgrade_server(force=False)
     elif sys.argv[1] == "--version":
-        check_self_update()
+        if len(sys.argv) > 2 and sys.argv[2].lower() == "force":
+            check_self_update(force=True)
+        else:
+            check_self_update(force=False)
     elif sys.argv[1] == "--help":
         show_help()
     else:
