@@ -2212,10 +2212,6 @@ def compare_versions(version1, version2):
         return 0
 
 def compare_script_versions(current, latest):
-    """
-    Compare two script version strings
-    Returns -1 if current < latest, 0 if equal, 1 if current > latest
-    """
     try:
         current_parts = [int(x) for x in current.split('.')]
         latest_parts = [int(x) for x in latest.split('.')]
