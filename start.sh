@@ -2294,7 +2294,7 @@ def check_self_update(force=False):
         if confirm == "Y":
             return download_latest_version()
         else:
-            print("Download canceled.")
+            print("Download canceled.\n")
             return False
     
     print("Checking for updates...\n")
