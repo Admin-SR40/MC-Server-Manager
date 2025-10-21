@@ -24,7 +24,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "3.0"
+SCRIPT_VERSION = "3.1"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -76,7 +76,7 @@ def check_port_availability():
                             port = int(port_str)
                         break
         except Exception as e:
-            print(f"Error reading server.properties: {e}")
+            print(f" - Error reading server.properties: {e}")
     
     try:
         import socket
@@ -84,13 +84,13 @@ def check_port_availability():
             s.settimeout(1)
             result = s.connect_ex(('localhost', port))
             if result == 0:
-                print(f"Port {port} is already in use")
+                print(f" - Port {port} is already in use")
                 return False
             else:
-                print(f"Port {port} is available")
+                print(f" - Port {port} is available")
                 return True
     except Exception as e:
-        print(f"Error checking port {port}: {e}")
+        print(f" - Error checking port {port}: {e}")
         return False
 
 def check_java_installation():
@@ -99,7 +99,7 @@ def check_java_installation():
         java_path = config["java_path"]
         
         if not Path(java_path).exists():
-            print(f"Java path not found: {java_path}")
+            print(f" - Java path not found: {java_path}")
             return False
         
         result = subprocess.run(
@@ -112,17 +112,17 @@ def check_java_installation():
         
         output = result.stderr or result.stdout
         if "version" in output.lower():
-            print("Java installation is valid")
+            print(" - Java installation is valid")
             return True
         else:
-            print("Java installation appears invalid")
+            print(" - Java installation appears invalid")
             return False
             
     except subprocess.TimeoutExpired:
-        print("Java version check timed out")
+        print(" - Java version check timed out")
         return False
     except Exception as e:
-        print(f"Error checking Java installation: {e}")
+        print(f" - Error checking Java installation: {e}")
         return False
 
 def check_file_permissions():
@@ -143,18 +143,18 @@ def check_file_permissions():
                     f.write("test")
                 test_file.unlink()
             except Exception as e:
-                print(f"No write permission in {dir_path.name} directory")
+                print(f" - No write permission in {dir_path.name} directory")
                 return False
                 
         except Exception as e:
-            print(f"Error accessing {dir_path.name} directory: {e}")
+            print(f" - Error accessing {dir_path.name} directory: {e}")
             return False
     
     if not SERVER_JAR.exists():
-        print(f"Server core file not found: {SERVER_JAR}")
+        print(f" - Server core file not found: {SERVER_JAR}")
         return False
     
-    print("File permissions are valid")
+    print(" - File permissions are valid")
     return True
 
 def truncate_text(text, max_length):
@@ -273,30 +273,88 @@ def reset_worlds():
     print("         World Reset Utility")
     print("=" * 50)
     
-    if not WORLDS_DIR.exists() or not any(WORLDS_DIR.iterdir()):
-        print("\nNo worlds found to reset.")
-        print("")
+    world_folders = []
+    if WORLDS_DIR.exists():
+        world_folders = [d for d in WORLDS_DIR.iterdir() if d.is_dir()]
+    
+    if not world_folders:
+        print("\nNo world folders found. Proceeding to seed configuration...\n")
+        configure_world_seed()
         return
     
-    confirm = input("\nDo you want to reset worlds? This will delete all world data. (Y/N): ").strip().upper()
-    if confirm != "Y":
-        print("World reset canceled.")
-        print("")
-        return
-    
-    print("Resetting worlds...")
+    print("\nExisting World Folders:")
+    print("=" * 30)
+    print("0. Delete ALL world folders")
+    for i, world_folder in enumerate(world_folders, 1):
+        world_size = sum(f.stat().st_size for f in world_folder.rglob('*') if f.is_file())
+        print(f"{i}. {world_folder.name} ({world_size // (1024*1024)} MB)")
+    print("=" * 30)
     
     try:
-        if WORLDS_DIR.exists():
-            shutil.rmtree(WORLDS_DIR)
-            WORLDS_DIR.mkdir(parents=True, exist_ok=True)
-            print("World directories cleared.")
-    except Exception as e:
-        print(f"Error clearing world directories: {e}\n")
+        selection = input("\nSelect world folders to delete (space-separated numbers, 0 for all): ").strip()
+        if not selection:
+            print("No selection made. Operation canceled.\n")
+            return
+        
+        selected_indices = []
+        for num_str in selection.split():
+            try:
+                num = int(num_str)
+                if 0 <= num <= len(world_folders):
+                    selected_indices.append(num)
+                else:
+                    print(f"Invalid number: {num}")
+                    return
+            except ValueError:
+                print(f"Invalid input: {num_str}")
+                return
+        
+        if 0 in selected_indices:
+            confirm = input("\nAre you sure you want to delete ALL world folders?\nThis cannot be undone! (Y/N): ").strip().upper()
+            if confirm == "Y":
+                for world_folder in world_folders:
+                    try:
+                        shutil.rmtree(world_folder)
+                        print(f"Deleted: {world_folder.name}")
+                    except Exception as e:
+                        print(f"Error deleting {world_folder.name}: {e}")
+                
+                print("\nAll world folders deleted successfully.\n")
+                configure_world_seed()
+            else:
+                print("Operation canceled.\n")
+        else:
+            deleted_count = 0
+            for idx in selected_indices:
+                world_folder = world_folders[idx-1]
+                try:
+                    shutil.rmtree(world_folder)
+                    print(f"Deleted: {world_folder.name}")
+                    deleted_count += 1
+                except Exception as e:
+                    print(f"Error deleting {world_folder.name}: {e}")
+            
+            print(f"\n{deleted_count} world folder(s) deleted successfully.")
+            
+            remaining_folders = [d for d in WORLDS_DIR.iterdir() if d.is_dir()]
+            if remaining_folders:
+                print("\nNote: Some world folders still exist.")
+                print("To configure world seed, you must delete ALL world folders to avoid conflicts.")
+                print("Run --reset again and select option 0 to delete all worlds.\n")
+            else:
+                print("\nAll world folders removed. Proceeding to seed configuration...\n")
+                configure_world_seed()
+                
+    except KeyboardInterrupt:
+        print("\nOperation canceled by user.\n")
         return
-    
+    except Exception as e:
+        print(f"Error during world reset: {e}\n")
+        return
+
+def configure_world_seed():
     if not SERVER_PROPERTIES.exists():
-        print("Server properties file not found. Creating default...")
+        print("Server properties file not found. Creating default...\n")
         SERVER_PROPERTIES.parent.mkdir(parents=True, exist_ok=True)
         with open(SERVER_PROPERTIES, 'w') as f:
             f.write("# Minecraft server properties\n")
@@ -335,11 +393,11 @@ def reset_worlds():
                     print(f"Seed set to: {current_seed}")
                     break
                 else:
-                    print("Seed cannot be empty. Please try again.")
+                    print("Seed cannot be empty. Please try again.\n")
             else:
-                print("Invalid option. Please choose 1, 2, or 3.")
+                print("Invalid option. Please choose 1, 2, or 3.\n")
         except KeyboardInterrupt:
-            print("\nOperation canceled.")
+            print("\nOperation canceled.\n")
             return
     
     seed_updated = False
@@ -358,7 +416,8 @@ def reset_worlds():
     with open(SERVER_PROPERTIES, 'w') as f:
         f.writelines(new_properties_content)
     
-    print("\nSuccessfully reset the worlds and updated seed configuration.")
+    print("\nSuccessfully configured world seed.")
+    print("New worlds will be generated with the specified seed when server starts.")
     print("")
 
 def create_new_server():
@@ -553,9 +612,7 @@ def show_version_info(version):
                 with zipf.open('info.txt') as info_file:
                     info_content = info_file.read().decode('utf-8')
                     print("\nVersion Information:")
-                    print("=" * 50)
                     print(info_content)
-                    print("=" * 50)
             else:
                 print(f"No info.txt found for version {version}")
     except Exception as e:
@@ -929,14 +986,14 @@ def format_dependency_warning(plugin, hard_dependents, soft_dependents):
     if hard_dependents:
         message.append(f"\nCRITICAL WARNING: {plugin['name']} is REQUIRED by:")
         for dependent in hard_dependents:
-            message.append(f"   - {dependent['name']} (version {dependent['version']})")
+            message.append(f" - {dependent['name']} (version {dependent['version']})")
         message.append("\nThese plugins WILL STOP WORKING if you disable this plugin!")
         message.append("This may cause SERVER CRASHES or errors!")
     
     if soft_dependents:
         message.append(f"\nWARNING: {plugin['name']} is optionally used by:")
         for dependent in soft_dependents:
-            message.append(f"   - {dependent['name']} (version {dependent['version']})")
+            message.append(f" - {dependent['name']} (version {dependent['version']})")
         message.append("\nThese plugins may lose functionality or not work perfectly!")
     
     return "\n".join(message)
@@ -1014,33 +1071,47 @@ def manage_plugins_with_dependencies():
                 print(warning_message)
                 
                 if hard_dependents:
-                    print(f"\nYou have two options:")
+                    print(f"\nYou have multiple options:")
                     print("1. Disable the dependent plugins first, then disable this one")
                     print("2. Force disable this plugin anyway (RISKY - may cause server issues)")
+                    print("3. Disable the whole chain for me (automatically disable all hard-dependent plugins)")
                     
                     while True:
-                        choice = input("\nChoose option (1/2) or 'C' to cancel: ").strip().upper()
+                        choice = input("\nChoose option (1/2/3) or 'C' to cancel: ").strip().upper()
                         if choice == '1':
                             print("Please disable the dependent plugins first:")
                             for dependent in hard_dependents:
-                                print(f"  - {dependent['name']}")
-                            print("Then try disabling this plugin again.")
+                                print(f" - {dependent['name']}")
+                            print("Then try disabling this plugin again.\n")
                             continue
                         elif choice == '2':
-                            confirm = input("Are you sure? This may break other plugins or crash the server! (Y/N): ").strip().upper()
+                            confirm = input("Are you sure?\nThis may break other plugins or crash the server! (Y/N): ").strip().upper()
                             if confirm == 'Y':
                                 old_path = plugin['path']
                                 new_path = old_path.parent / (old_path.name + ".disabled")
                                 old_path.rename(new_path)
-                                print(f"Force disabled: {plugin['name']}")
+                                print(f"Force disabled: {plugin['name']}\n")
                                 break
                             else:
                                 continue
+                        elif choice == '3':
+                            disabled_plugins = disable_dependency_chain(plugins, plugin)
+                            if disabled_plugins:
+                                print(f"\nAutomatically disabled the following plugins:")
+                                for disabled_plugin in disabled_plugins:
+                                    print(f" - {disabled_plugin['name']}")
+                                
+                                if soft_dependents:
+                                    print(f"\nNote: The following plugins have soft dependencies and were NOT automatically disabled:")
+                                    for soft_dep in soft_dependents:
+                                        print(f"  - {soft_dep['name']}")
+                                    print("These plugins may lose some functionality but should still work.\n")
+                            break
                         elif choice == 'C':
-                            print(f"Cancelled disabling: {plugin['name']}")
+                            print(f"Cancelled disabling: {plugin['name']}\n")
                             break
                         else:
-                            print("Invalid choice. Please enter 1, 2, or C.")
+                            print("Invalid choice. Please enter 1, 2, 3, or C.\n")
                 else:
                     confirm = input(f"\nDo you still want to disable {plugin['name']}? (Y/N): ").strip().upper()
                     if confirm == 'Y':
@@ -1063,6 +1134,37 @@ def manage_plugins_with_dependencies():
         print("Invalid input. Please enter numbers separated by spaces.\n")
     except Exception as e:
         print(f"Error toggling plugins: {e}\n")
+
+def disable_dependency_chain(plugins, target_plugin):
+    disabled_plugins = []
+    plugins_to_disable = [target_plugin]
+    
+    while plugins_to_disable:
+        current_plugin = plugins_to_disable.pop(0)
+        
+        if not current_plugin['enabled'] or current_plugin in disabled_plugins:
+            continue
+        
+        try:
+            old_path = current_plugin['path']
+            new_path = old_path.parent / (old_path.name + ".disabled")
+            old_path.rename(new_path)
+            current_plugin['path'] = new_path
+            current_plugin['enabled'] = False
+            disabled_plugins.append(current_plugin)
+            print(f"  Disabled: {current_plugin['name']}")
+        except Exception as e:
+            print(f"  Error disabling {current_plugin['name']}: {e}")
+            continue
+        
+        for plugin in plugins:
+            if plugin['enabled'] and plugin not in disabled_plugins and plugin not in plugins_to_disable:
+                dependencies = get_plugin_dependencies(plugin['path'])
+                if current_plugin['name'] in dependencies['depend']:
+                    plugins_to_disable.append(plugin)
+                    print(f"  Queued for disabling (hard dependency): {plugin['name']}")
+    
+    return disabled_plugins
 
 def clear_screen():
     if platform.system() == "Windows":
@@ -1819,8 +1921,8 @@ def start_server():
     port_ok, java_ok, permissions_ok = check_server_requirements()
     
     if not all([port_ok, java_ok, permissions_ok]):
-        print("\nServer requirements check failed. Please fix the issues above.")
-        print("")
+        print("\nServer requirements check failed. Please fix the issues above.\n")
+        return
     
     show_info()
     
@@ -2325,8 +2427,8 @@ def check_self_update(force=False):
         if confirm != "Y":
             print("Update canceled.")
             return False
-        
-        return download_and_update_script(expected_md5)
+
+        return download_latest_version()
         
     except urllib.error.URLError as e:
         print(f"Network error: Could not check for updates - {e}\n")
@@ -2433,7 +2535,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 50)
-    print("     Minecraft Server Management Tool (v3.0)")
+    print("     Minecraft Server Management Tool (v3.1)")
     print("=" * 50)
     print("")
     print("A comprehensive command-line tool for managing")
