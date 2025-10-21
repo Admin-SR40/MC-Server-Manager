@@ -1073,8 +1073,8 @@ def manage_plugins_with_dependencies():
                 if hard_dependents:
                     print(f"\nYou have multiple options:")
                     print("1. Disable the dependent plugins first, then disable this one")
-                    print("2. Force disable this plugin anyway (RISKY - may cause server issues)")
-                    print("3. Disable the whole chain for me (automatically disable all hard-dependent plugins)")
+                    print("2. Force disable this plugin anyway (RISKY)")
+                    print("3. Disable the whole plugin chain for me (AUTOMATIC)")
                     
                     while True:
                         choice = input("\nChoose option (1/2/3) or 'C' to cancel: ").strip().upper()
