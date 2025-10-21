@@ -156,7 +156,7 @@ Use `--version force` or `--upgrade force` to enable force mode.
 ## Wiki & Documentation
 
 For detailed documentation, tutorials, and best practices, visit the AI-Generated Wiki:
-- [DeepWiki](deepwiki.com/Admin-SR40/MC-Server-Manager)
+- [DeepWiki](https://deepwiki.com/Admin-SR40/MC-Server-Manager)
 
 ## License
 
