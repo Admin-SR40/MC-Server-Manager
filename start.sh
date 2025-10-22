@@ -2528,8 +2528,9 @@ def download_latest_version():
             print("MD5 verification passed.\n")
         
         current_script = Path(__file__).resolve()
-        backup_script = current_script.with_suffix('.sh.backup')
-        new_script = current_script.with_suffix('.sh.new')
+        
+        backup_script = current_script.with_name(current_script.name + '.bak')
+        new_script = current_script.with_name(current_script.name + '.new')
         
         try:
             shutil.copy2(current_script, backup_script)
@@ -2581,7 +2582,7 @@ def download_latest_version():
             
     except Exception as e:
         print(f"Error during update process: {e}\n")
-        new_script = Path(__file__).resolve().with_suffix('.sh.new')
+        new_script = Path(__file__).resolve().with_name(current_script.name + '.new')
         if new_script.exists():
             try:
                 new_script.unlink()
