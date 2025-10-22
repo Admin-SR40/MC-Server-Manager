@@ -24,7 +24,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "3.2"
+SCRIPT_VERSION = "3.3"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -269,144 +269,139 @@ def check_and_accept_eula():
     return True
 
 def reset_worlds():
-    print("\n" + "=" * 39)
-    print("          World Reset Utility")
-    print("=" * 39)
-    
-    world_folders = []
-    if WORLDS_DIR.exists():
-        world_folders = [d for d in WORLDS_DIR.iterdir() if d.is_dir()]
-    
+    print("\n" + "=" * 52)
+    print("                World Reset Utility")
+    print("=" * 52)
+
+    WORLDS_DIR.mkdir(parents=True, exist_ok=True)
+
+    world_folders = [d for d in WORLDS_DIR.iterdir() if d.is_dir()]
+
     if not world_folders:
-        print("\nNo world folders found. Proceeding to seed configuration...\n")
-        configure_world_seed()
+        print("\nNo world folders found.")
+        choice = input("Do you want to configure a new world seed now? (Y/N): ").strip().upper()
+        if choice == "Y":
+            configure_world_seed()
+        else:
+            print("Skipped seed configuration.\n")
         return
-    
-    print("\n          - Existing Worlds -")
-    
+
+    print("\n                - Existing Worlds -")
+
     def format_file_size(bytes_size):
         if bytes_size == 0:
             return "0 B"
-        
         units = ['B', 'KB', 'MB', 'GB']
-        unit_index = 0
         size = float(bytes_size)
-        
+        unit_index = 0
         while size >= 1024 and unit_index < len(units) - 1:
             size /= 1024
             unit_index += 1
-        
-        if unit_index == 3 and size >= 1024:
-            return "> 1 TB"
-        
-        if unit_index > 0:
-            return f"{size:.1f} {units[unit_index]}"
-        else:
-            return f"{int(size)} {units[unit_index]}"
-    
-    world_sizes = []
+        return f"{size:.1f} {units[unit_index]}"
+
+    world_info = []
     total_size = 0
-    
     for world_folder in world_folders:
         try:
             world_size = sum(f.stat().st_size for f in world_folder.rglob('*') if f.is_file())
-            world_sizes.append(world_size)
+            status = "OK" if (world_folder / "level.dat").exists() else "CORRUPTED"
+            world_info.append((world_folder, world_size, status))
             total_size += world_size
         except Exception as e:
-            print(f"Error calculating size for {world_folder.name}: {e}")
-            world_sizes.append(0)
-    
+            world_info.append((world_folder, 0, "ERROR"))
+            print(f"Error reading {world_folder.name}: {e}")
+
+    world_info.sort(key=lambda x: x[1], reverse=True)
+
     name_width = 25
     size_width = 11
-    
-    table = []
-    table.append("╔" + "═" * name_width + "╦" + "═" * size_width + "╗")
-    table.append("║" + " Worlds".ljust(name_width-1) + " ║" + " Size".ljust(size_width-1) + " ║")
-    table.append("╠" + "═" * name_width + "╬" + "═" * size_width + "╣")
-    
-    for i, (world_folder, world_size) in enumerate(zip(world_folders, world_sizes), 1):
-        name = f"{i}. {world_folder.name}"
-        size_display = format_file_size(world_size)
-        
-        name_display = truncate_text(name, name_width-1)
-        size_display = truncate_text(size_display, size_width-1)
-        
-        row = (f"║ {name_display.ljust(name_width-1)}"
-               f"║ {size_display.ljust(size_width-1)}║")
-        table.append(row)
-    
-    all_name = "0. All"
-    total_size_display = format_file_size(total_size)
-    
-    all_name_display = truncate_text(all_name, name_width-1)
-    total_size_display = truncate_text(total_size_display, size_width-1)
-    
-    table.append(f"║ {all_name_display.ljust(name_width-1)}║ {total_size_display.ljust(size_width-1)}║")
-    table.append("╚" + "═" * name_width + "╩" + "═" * size_width + "╝")
-    
-    print("\n".join(table))
-    
+    status_width = 12
+    print("╔" + "═" * name_width + "╦" + "═" * size_width + "╦" + "═" * status_width + "╗")
+    print("║" + " Worlds".ljust(name_width - 1) +
+          " ║" + " Size".ljust(size_width - 1) +
+          " ║" + " Status".ljust(status_width - 1) + " ║")
+    print("╠" + "═" * name_width + "╬" + "═" * size_width + "╬" + "═" * status_width + "╣")
+
+    for i, (world_folder, size, status) in enumerate(world_info, 1):
+        name_display = f"{i}. {world_folder.name}"
+        print(f"║ {name_display:<{name_width - 1}}"
+              f"║ {format_file_size(size):<{size_width - 1}}"
+              f"║ {status:<{status_width - 1}}║")
+
+    print("╠" + "═" * name_width + "╬" + "═" * size_width + "╬" + "═" * status_width + "╣")
+    print(f"║ {'0. All':<{name_width - 1}}║ {format_file_size(total_size):<{size_width - 1}}║ {'All Worlds':<{status_width - 1}}║")
+    print("╚" + "═" * name_width + "╩" + "═" * size_width + "╩" + "═" * status_width + "╝")
+
     try:
         selection = input("\nSelect world folders to delete (space-separated numbers, 0 for all): ").strip()
         if not selection:
             print("No selection made. Operation canceled.\n")
             return
-        
+
         selected_indices = []
         for num_str in selection.split():
             try:
                 num = int(num_str)
-                if 0 <= num <= len(world_folders):
+                if 0 <= num <= len(world_info):
                     selected_indices.append(num)
                 else:
-                    print(f"Invalid number: {num}\n")
+                    print(f"Invalid number: {num}")
                     return
             except ValueError:
-                print(f"Invalid input: {num_str}\n")
+                print(f"Invalid input: {num_str}")
                 return
-        
+
         if 0 in selected_indices:
             confirm = input("\nAre you sure you want to delete ALL world folders?\nThis cannot be undone! (Y/N): ").strip().upper()
-            if confirm == "Y":
-                for world_folder in world_folders:
-                    try:
-                        shutil.rmtree(world_folder)
-                        print(f"Deleted: {world_folder.name}")
-                    except Exception as e:
-                        print(f"Error deleting {world_folder.name}: {e}")
-                
-                print("\nAll world folders deleted successfully.\n")
-                configure_world_seed()
-            else:
+            if confirm != "Y":
                 print("Operation canceled.\n")
-        else:
-            deleted_count = 0
-            for idx in selected_indices:
-                world_folder = world_folders[idx-1]
+                return
+
+            for world_folder, _, _ in world_info:
                 try:
                     shutil.rmtree(world_folder)
                     print(f"Deleted: {world_folder.name}")
-                    deleted_count += 1
                 except Exception as e:
                     print(f"Error deleting {world_folder.name}: {e}")
-            
-            print(f"\n{deleted_count} world folder(s) deleted successfully.")
-            
-            remaining_folders = [d for d in WORLDS_DIR.iterdir() if d.is_dir()]
-            if remaining_folders:
-                print("\nNote: Some world folders still exist.")
-                print("To configure world seed, you must delete ALL world folders to avoid conflicts.")
-                print("Run --reset again and select option 0 to delete all worlds.\n")
-            else:
-                print("\nAll world folders removed. Proceeding to seed configuration...\n")
+
+            print("\nAll world folders deleted successfully.\n")
+
+        else:
+            worlds_to_delete = [world_info[i - 1][0] for i in selected_indices]
+            print("\nYou have selected the following world(s) to delete:")
+            for w in worlds_to_delete:
+                print(f" - {w.name}")
+
+            confirm = input("\nAre you sure you want to delete these world(s)?\nThis cannot be undone! (Y/N): ").strip().upper()
+            if confirm != "Y":
+                print("Operation canceled.\n")
+                return
+
+            for w in worlds_to_delete:
+                try:
+                    shutil.rmtree(w)
+                    print(f"Deleted: {w.name}")
+                except Exception as e:
+                    print(f"Error deleting {w.name}: {e}")
+
+            print("\nSelected world(s) deleted successfully.\n")
+
+        remaining = [d for d in WORLDS_DIR.iterdir() if d.is_dir()]
+        if not remaining:
+            choice = input("All world folders have been removed.\nDo you want to configure a new world seed now? (Y/N): ").strip().upper()
+            if choice == "Y":
                 configure_world_seed()
-                
+            else:
+                print("Skipped seed configuration.\n")
+        else:
+            print("Some world folders remain. Skipping seed configuration.\n")
+
     except KeyboardInterrupt:
         print("\nOperation canceled by user.\n")
-        return
     except Exception as e:
         print(f"Error during world reset: {e}\n")
-        return
+
+
 
 def configure_world_seed():
     if not SERVER_PROPERTIES.exists():
@@ -2592,7 +2587,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 50)
-    print("     Minecraft Server Management Tool (v3.2)")
+    print("     Minecraft Server Management Tool (v3.3)")
     print("=" * 50)
     print("")
     print("A comprehensive command-line tool for managing")
