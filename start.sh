@@ -24,7 +24,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "3.1"
+SCRIPT_VERSION = "3.2"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -168,7 +168,7 @@ def format_plugins_table(plugins):
     status_width = 10
     
     table = []
-    table.append("                 - Plugins Management -")
+    table.append("                - Plugins Management -")
     table.append("╔" + "═" * name_width + "╦" + "═" * version_width + "╦" + "═" * status_width + "╗")
     table.append("║" + " Plugins".ljust(name_width-1) + " ║" + " Version".ljust(version_width-1) + " ║" + " Status".ljust(status_width-1) + " ║")
     table.append("╠" + "═" * name_width + "╬" + "═" * version_width + "╬" + "═" * status_width + "╣")
@@ -269,9 +269,9 @@ def check_and_accept_eula():
     return True
 
 def reset_worlds():
-    print("\n" + "=" * 50)
-    print("         World Reset Utility")
-    print("=" * 50)
+    print("\n" + "=" * 39)
+    print("          World Reset Utility")
+    print("=" * 39)
     
     world_folders = []
     if WORLDS_DIR.exists():
@@ -282,13 +282,69 @@ def reset_worlds():
         configure_world_seed()
         return
     
-    print("\nExisting World Folders:")
-    print("=" * 30)
-    print("0. Delete ALL world folders")
-    for i, world_folder in enumerate(world_folders, 1):
-        world_size = sum(f.stat().st_size for f in world_folder.rglob('*') if f.is_file())
-        print(f"{i}. {world_folder.name} ({world_size // (1024*1024)} MB)")
-    print("=" * 30)
+    print("\n          - Existing Worlds -")
+    
+    def format_file_size(bytes_size):
+        if bytes_size == 0:
+            return "0 B"
+        
+        units = ['B', 'KB', 'MB', 'GB']
+        unit_index = 0
+        size = float(bytes_size)
+        
+        while size >= 1024 and unit_index < len(units) - 1:
+            size /= 1024
+            unit_index += 1
+        
+        if unit_index == 3 and size >= 1024:
+            return "> 1 TB"
+        
+        if unit_index > 0:
+            return f"{size:.1f} {units[unit_index]}"
+        else:
+            return f"{int(size)} {units[unit_index]}"
+    
+    world_sizes = []
+    total_size = 0
+    
+    for world_folder in world_folders:
+        try:
+            world_size = sum(f.stat().st_size for f in world_folder.rglob('*') if f.is_file())
+            world_sizes.append(world_size)
+            total_size += world_size
+        except Exception as e:
+            print(f"Error calculating size for {world_folder.name}: {e}")
+            world_sizes.append(0)
+    
+    name_width = 25
+    size_width = 11
+    
+    table = []
+    table.append("╔" + "═" * name_width + "╦" + "═" * size_width + "╗")
+    table.append("║" + " Worlds".ljust(name_width-1) + " ║" + " Size".ljust(size_width-1) + " ║")
+    table.append("╠" + "═" * name_width + "╬" + "═" * size_width + "╣")
+    
+    for i, (world_folder, world_size) in enumerate(zip(world_folders, world_sizes), 1):
+        name = f"{i}. {world_folder.name}"
+        size_display = format_file_size(world_size)
+        
+        name_display = truncate_text(name, name_width-1)
+        size_display = truncate_text(size_display, size_width-1)
+        
+        row = (f"║ {name_display.ljust(name_width-1)}"
+               f"║ {size_display.ljust(size_width-1)}║")
+        table.append(row)
+    
+    all_name = "0. All"
+    total_size_display = format_file_size(total_size)
+    
+    all_name_display = truncate_text(all_name, name_width-1)
+    total_size_display = truncate_text(total_size_display, size_width-1)
+    
+    table.append(f"║ {all_name_display.ljust(name_width-1)}║ {total_size_display.ljust(size_width-1)}║")
+    table.append("╚" + "═" * name_width + "╩" + "═" * size_width + "╝")
+    
+    print("\n".join(table))
     
     try:
         selection = input("\nSelect world folders to delete (space-separated numbers, 0 for all): ").strip()
@@ -303,10 +359,10 @@ def reset_worlds():
                 if 0 <= num <= len(world_folders):
                     selected_indices.append(num)
                 else:
-                    print(f"Invalid number: {num}")
+                    print(f"Invalid number: {num}\n")
                     return
             except ValueError:
-                print(f"Invalid input: {num_str}")
+                print(f"Invalid input: {num_str}\n")
                 return
         
         if 0 in selected_indices:
@@ -472,7 +528,7 @@ def create_new_server():
         selected_version = sorted_versions[index]
         print(f"Selected version: {selected_version}")
     except ValueError:
-        print("Invalid input. Please enter a number.")
+        print("Invalid input. Please enter a number.\n")
         return
     
     if check_for_updates(selected_version):
@@ -2308,12 +2364,12 @@ def upgrade_server(force=False):
                 return
             
             if SERVER_JAR.exists():
-                backup_jar = BASE_DIR / "core.jar.backup"
+                backup_jar = BASE_DIR / "core.jar.bak"
                 shutil.copy2(SERVER_JAR, backup_jar)
                 print("Backed up current core.jar")
             
             shutil.copy2(core_jar_temp, SERVER_JAR)
-            print("Core upgraded successfully.")
+            print("\nCore upgraded successfully.")
             
             config = configparser.ConfigParser()
             config.read(CONFIG_FILE)
@@ -2535,7 +2591,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 50)
-    print("     Minecraft Server Management Tool (v3.1)")
+    print("     Minecraft Server Management Tool (v3.2)")
     print("=" * 50)
     print("")
     print("A comprehensive command-line tool for managing")
