@@ -24,7 +24,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "3.3"
+SCRIPT_VERSION = "3.4"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -1912,60 +1912,210 @@ def dump_logs():
         print("")
         return
     
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = BASE_DIR / f"logs_dump_{timestamp}.log.gz"
+    search_terms = sys.argv[2:] if len(sys.argv) > 2 else []
     
-    print(f"\nCreating log dump...")
-    
-    try:
-        temp_dir = BASE_DIR / f"temp_logs_{timestamp}"
+    if search_terms:
+        print("\n" + "=" * 45)
+        print("          Log Search Utility")
+        print("=" * 45)
+        print(f"Searching for: {', '.join(search_terms)} (case-insensitive)")
+        
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = BASE_DIR / f"logs_search_{timestamp}.zip"
+        
+        temp_dir = BASE_DIR / f"temp_search_{timestamp}"
         temp_dir.mkdir(parents=True, exist_ok=True)
         
-        for root, _, files in os.walk(logs_dir):
-            for file in files:
-                src_path = os.path.join(root, file)
-                rel_path = os.path.relpath(src_path, BASE_DIR)
-                dest_path = temp_dir / rel_path
-                dest_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src_path, dest_path)
+        try:
+            files_scanned = 0
+            files_matched = 0
+            total_matched_lines = 0
+            
+            for log_file in logs_dir.rglob("*"):
+                if not log_file.is_file():
+                    continue
+                
+                files_scanned += 1
+                file_matched_lines = 0
+                file_content = []
+                
+                try:
+                    if log_file.suffix == '.gz':
+                        with gzip.open(log_file, 'rt', encoding='utf-8', errors='ignore') as f:
+                            for line_num, line in enumerate(f, 1):
+                                line_lower = line.lower()
+                                if any(term.lower() in line_lower for term in search_terms):
+                                    file_matched_lines += 1
+                                    file_content.append(f"Line {line_num}: {line.rstrip()}")
+                    else:
+                        with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
+                            for line_num, line in enumerate(f, 1):
+                                line_lower = line.lower()
+                                if any(term.lower() in line_lower for term in search_terms):
+                                    file_matched_lines += 1
+                                    file_content.append(f"Line {line_num}: {line.rstrip()}")
+                    
+                    if file_content:
+                        files_matched += 1
+                        total_matched_lines += file_matched_lines
+                        
+                        rel_path = log_file.relative_to(logs_dir)
+                        output_filename = temp_dir / f"{rel_path}.matched.txt"
+                        output_filename.parent.mkdir(parents=True, exist_ok=True)
+                        
+                        with open(output_filename, 'w', encoding='utf-8') as f:
+                            f.write("=" * 20 + "\n")
+                            f.write(f"{rel_path}\n")
+                            f.write("=" * 20 + "\n\n")
+                            f.write("\n".join(file_content))
+                            f.write("\n")
+                        
+                        print(f"Found {file_matched_lines} matches in: {rel_path}")
+                        
+                except Exception as e:
+                    print(f"Error processing {log_file}: {e}")
+                    continue
+            
+            report_content = f"""==============================
+        Log Dump Report
+==============================
+
+ - Date: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+ - Searched keyword: "{'", "'.join(search_terms)}"
+ - Files scanned: {files_scanned}
+ - Files matched: {files_matched}
+ - Total lines matched: {total_matched_lines}
+ - Archive file: {output_file.name}"""
+
+            report_file = temp_dir / "report.txt"
+            with open(report_file, 'w', encoding='utf-8') as f:
+                f.write(report_content)
+            
+            if files_matched > 0:
+                with zipfile.ZipFile(output_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    for file_path in temp_dir.rglob("*"):
+                        if file_path.is_file():
+                            arcname = file_path.relative_to(temp_dir)
+                            zipf.write(file_path, arcname)
+                
+                file_size = os.path.getsize(output_file)
+                
+                print("\n" + "=" * 45)
+                print(f"Dumped {files_matched} log files.")
+                print(f"Found {total_matched_lines} matching lines in {files_matched} files.")
+                print(f"\nResult saved to: {output_file.name}")
+                print(f"File size: {file_size} bytes (~{file_size // (1024*1024)} MB)")
+                print("=" * 45)
+                
+                confirm = input("\nDo you want to delete the original log files? (Y/N): ").strip().upper()
+                if confirm == "Y":
+                    deleted_count = 0
+                    freed_space = 0
+                    for log_file in logs_dir.rglob("*"):
+                        if log_file.is_file():
+                            try:
+                                file_size = log_file.stat().st_size
+                                log_file.unlink()
+                                deleted_count += 1
+                                freed_space += file_size
+                            except Exception as e:
+                                print(f"Error deleting {log_file}: {e}")
+                    
+                    print(f"Deleted {deleted_count} log files, freed {freed_space} bytes.")
+                
+            else:
+                print("\nNo matching content found in any log files.")
+            
+            print("")
+            
+        except Exception as e:
+            print(f"Error creating log search: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir, ignore_errors=True)
+    
+    else:
+        print("\n" + "=" * 45)
+        print("          Log Dump Utility")
+        print("=" * 45)
         
-        with zipfile.ZipFile(output_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for root, _, files in os.walk(temp_dir):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    arcname = os.path.relpath(file_path, temp_dir)
-                    zipf.write(file_path, arcname)
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = BASE_DIR / f"logs_dump_{timestamp}.zip"
         
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        print(f"\nCreating complete log dump...")
         
-        file_size = os.path.getsize(output_file)
-        print(f"Log dump created successfully: {output_file} ({file_size} bytes, ~{file_size // (1024*1024)} MB)")
-        
-        confirm = input("\nDo you want to delete the original log files? (Y/N): ")
-        if confirm == "Y":
-            deleted_count = 0
-            freed_space = 0
+        try:
+            temp_dir = BASE_DIR / f"temp_logs_{timestamp}"
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            
+            file_count = 0
             for root, _, files in os.walk(logs_dir):
                 for file in files:
-                    file_path = os.path.join(root, file)
-                    try:
-                        file_size = os.path.getsize(file_path)
-                        os.remove(file_path)
-                        deleted_count += 1
-                        freed_space += file_size
-                    except Exception as e:
-                        print(f"Error deleting {file_path}: {e}\n")
+                    src_path = os.path.join(root, file)
+                    rel_path = os.path.relpath(src_path, BASE_DIR)
+                    dest_path = temp_dir / rel_path
+                    dest_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src_path, dest_path)
+                    file_count += 1
             
-            print(f"Deleted {deleted_count} log files, freed {freed_space} bytes.")
-        
-        print("")
-        
-    except Exception as e:
-        print(f"Error creating log dump: {e}\n")
-        import traceback
-        traceback.print_exc()
-        if temp_dir.exists():
+            report_content = f"""==============================
+        Log Dump Report
+==============================
+
+ - Date: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+ - Searched keyword: "Full dump (no keyword search)"
+ - Files scanned: {file_count}
+ - Files matched: {file_count}
+ - Total lines matched: N/A (full dump)
+ - Archive file: {output_file.name}"""
+
+            report_file = temp_dir / "report.txt"
+            with open(report_file, 'w', encoding='utf-8') as f:
+                f.write(report_content)
+            
+            with zipfile.ZipFile(output_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for root, _, files in os.walk(temp_dir):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, temp_dir)
+                        zipf.write(file_path, arcname)
+            
             shutil.rmtree(temp_dir, ignore_errors=True)
+            
+            file_size = os.path.getsize(output_file)
+            print("\n" + "=" * 45)
+            print(f"Dumped {file_count} log files.")
+            print(f"Result saved to: {output_file.name}")
+            print(f"File size: {file_size} bytes (~{file_size // (1024*1024)} MB)")
+            print("=" * 45)
+            
+            confirm = input("\nDo you want to delete the original log files? (Y/N): ").strip().upper()
+            if confirm == "Y":
+                deleted_count = 0
+                freed_space = 0
+                for root, _, files in os.walk(logs_dir):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        try:
+                            file_size = os.path.getsize(file_path)
+                            os.remove(file_path)
+                            deleted_count += 1
+                            freed_space += file_size
+                        except Exception as e:
+                            print(f"Error deleting {file_path}: {e}")
+                
+                print(f"Deleted {deleted_count} log files, freed {freed_space} bytes.")
+            
+            print("")
+            
+        except Exception as e:
+            print(f"Error creating log dump: {e}\n")
+            import traceback
+            traceback.print_exc()
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
 def start_server():
     
@@ -2587,7 +2737,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 50)
-    print("     Minecraft Server Management Tool (v3.3)")
+    print("     Minecraft Server Management Tool (v3.4)")
     print("=" * 50)
     print("")
     print("A comprehensive command-line tool for managing")
