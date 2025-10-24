@@ -15,7 +15,6 @@ import json
 import urllib.request
 import fnmatch
 import hashlib
-import tempfile
 from pathlib import Path
 
 try:
@@ -24,7 +23,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "3.4"
+SCRIPT_VERSION = "3.5"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -473,7 +472,7 @@ def configure_world_seed():
 
 def create_new_server():
     print("\n" + "=" * 50)
-    print("         New Server Creation")
+    print("               New Server Creation")
     print("=" * 50)
     
     try:
@@ -493,64 +492,44 @@ def create_new_server():
     if not available_versions:
         print("\nNo server versions found in bundles directory.")
         print("Please download a version first using: --get <version>")
-        print("")
         return
     
     print("\nAvailable Versions:")
     print("=" * 30)
-    
-    sorted_versions = sorted(
-        available_versions, 
-        key=lambda v: [int(n) for n in v.split('.')], 
-        reverse=True
-    )
-    
+    sorted_versions = sorted(available_versions, key=lambda v: [int(n) for n in v.split('.')], reverse=True)
     for i, version in enumerate(sorted_versions, 1):
         print(f"{i}. {version}")
     print("=" * 30)
     
     try:
-        selection = input("\nPlease select a version to create (number): ").strip()
+        selection = input("\nSelect a version to create (number): ").strip()
         if not selection:
-            print("No selection made.\n")
+            print("No selection made.")
             return
-        
         index = int(selection) - 1
-        if index < 0 or index >= len(sorted_versions):
+        if not (0 <= index < len(sorted_versions)):
             print("Invalid selection.")
             return
-        
         selected_version = sorted_versions[index]
         print(f"Selected version: {selected_version}")
     except ValueError:
-        print("Invalid input. Please enter a number.\n")
+        print("Invalid input. Please enter a number.")
         return
     
     if check_for_updates(selected_version):
-        confirm = input("\nWould you like to update to the latest build before creating the server? (Y/N): ").strip().upper()
+        confirm = input("\nUpdate to latest build before creating? (Y/N): ").strip().upper()
         if confirm == "Y":
             download_version(selected_version)
     
     show_version_info(selected_version)
     
-    server_files_exist = any(
-        item.name not in BASE_EXCLUDE_LIST and 
-        not item.name.startswith('.') and
-        item.name != 'bundles'
-        for item in BASE_DIR.iterdir()
-    )
-    
-    if server_files_exist:
-        confirm = input("\nDo you want to save the current server before creating a new one? (Y/N): ").strip().upper()
-        if confirm == "Y":
-            backup_version()
-    
     core_zip_path = BUNDLES_DIR / selected_version / "core.zip"
+    if not core_zip_path.exists():
+        print(f"Error: core.zip missing for {selected_version}")
+        return
     
     print("\nCreating new server...")
-    
     exclude_list = get_exclude_list()
-    
     for item in BASE_DIR.iterdir():
         if any(fnmatch.fnmatch(item.name, pattern) for pattern in exclude_list):
             continue
@@ -566,20 +545,28 @@ def create_new_server():
         with zipfile.ZipFile(core_zip_path, 'r') as zipf:
             zipf.extractall(BASE_DIR)
         print(f"Extracted core for version {selected_version}")
-        
-        info_file = BASE_DIR / "info.txt"
-        if info_file.exists():
-            info_file.unlink()
-            
     except Exception as e:
         print(f"Error extracting core: {e}\n")
         return
     
-    print("\nStarting server initialization...\n")
-    init_config(prefill_version=selected_version)
+    print("\nInitialization options:")
+    print("1. Enter --init")
+    print("2. Enter --init auto")
+    print("3. Exit without initialization")
     
-    print("New server created successfully!")
-    print("")
+    while True:
+        choice = input("\nYour choice (1-3): ").strip()
+        if choice == "1":
+            init_config(prefill_version=selected_version)
+            break
+        elif choice == "2":
+            init_config_auto(prefill_version=selected_version)
+            break
+        elif choice == "3":
+            print("Server created but not initialized.")
+            break
+        else:
+            print("Invalid input. Choose 1, 2, or 3.")
 
 def check_for_updates(version):
     print(f"\nChecking for updates for version {version}...")
@@ -1373,6 +1360,118 @@ def init_config(prefill_version=None):
     
     print(f"\nConfiguration saved to {CONFIG_FILE}")
     show_info()
+
+def init_config_auto(prefill_version=None):
+    print("=" * 50)
+    print("         Automatic Server Initialization")
+    print("=" * 50)
+
+    CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    config = configparser.ConfigParser()
+    
+    version = prefill_version
+    if not version and SERVER_JAR.exists():
+        try:
+            with zipfile.ZipFile(SERVER_JAR, 'r') as jar:
+                with jar.open('version.json') as f:
+                    data = json.load(f)
+                    version = data.get("id", "unknown")
+                    java_required = int(data.get("java_version", 8))
+        except Exception:
+            version = "unknown"
+            java_required = 8
+    else:
+        java_required = 8
+    
+    print(f"\nDetected version: {version}")
+    print(f"Required Java version: {java_required}")
+
+    java_installations = find_java_installations()
+    available_versions = [int(j['version']) for j in java_installations if j['version'].isdigit()]
+    
+    java_path = None
+    if not available_versions:
+        print("\nNo Java installations found!")
+        custom = input("Would you like to specify a custom Java path? (Y/N): ").strip().upper()
+        if custom == "Y":
+            while True:
+                custom_path = input("Enter custom Java path: ").strip()
+                validated = validate_java_path(custom_path)
+                if validated:
+                    java_path = validated
+                    break
+                else:
+                    print("Invalid path. Try again.")
+        else:
+            print("Exiting auto initialization.")
+            return
+    else:
+        found = False
+        test_ver = java_required
+        while not found:
+            for j in java_installations:
+                if j["version"].isdigit() and int(j["version"]) == test_ver:
+                    java_path = j["path"]
+                    found = True
+                    break
+            if not found:
+                test_ver += 1
+                if test_ver > 25:
+                    break
+        if not java_path:
+            print(f"No suitable Java version found up to Java {test_ver}.")
+            print("Exiting auto initialization.")
+            return
+
+    try:
+        if platform.system() == "Windows":
+            import ctypes
+
+            class MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+
+            memoryStatus = MEMORYSTATUSEX()
+            memoryStatus.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(memoryStatus))
+            total_mem = memoryStatus.ullTotalPhys / (1024 ** 3)
+        else:
+            total_mem = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') / (1024 ** 3)
+    except Exception:
+        total_mem = 4.0
+
+    if total_mem < 2:
+        max_ram = int(total_mem)
+    elif 2 <= total_mem <= 4:
+        max_ram = 2
+    else:
+        max_ram = int(total_mem / 2)
+
+    print(f"\nAuto-selected RAM: {max_ram} GB (Total: {total_mem:.1f} GB)")
+
+    config["SERVER"] = {
+        "version": version,
+        "max_ram": str(max_ram),
+        "java_path": java_path,
+        "additional_list": "",
+        "additional_parameters": ""
+    }
+    
+    with open(CONFIG_FILE, "w") as f:
+        config.write(f)
+    
+    print(f"\nAuto configuration saved to {CONFIG_FILE}")
+    show_info()
+    print("Auto initialization complete.\n")
 
 def find_java_installations():
     java_installations = []
@@ -2343,7 +2442,7 @@ def disable_all_plugins():
 
 def upgrade_server(force=False):
     print("\n" + "=" * 50)
-    print("         Server Core Upgrade")
+    print("               Server Core Upgrade")
     print("=" * 50)
     
     if force:
@@ -2737,7 +2836,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 50)
-    print("     Minecraft Server Management Tool (v3.4)")
+    print("     Minecraft Server Management Tool (v3.5)")
     print("=" * 50)
     print("")
     print("A comprehensive command-line tool for managing")
@@ -2777,7 +2876,10 @@ def main():
     if len(sys.argv) == 1:
         start_server()
     elif sys.argv[1] == "--init":
-        init_config()
+        if len(sys.argv) > 2 and sys.argv[2].lower() == "auto":
+            init_config_auto()
+        else:
+            init_config()
     elif sys.argv[1] == "--info":
         show_info()
     elif sys.argv[1] == "--list":
