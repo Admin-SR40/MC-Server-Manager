@@ -23,7 +23,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "3.5"
+SCRIPT_VERSION = "3.6"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -2216,7 +2216,65 @@ def dump_logs():
             if temp_dir.exists():
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
+def check_config_file():
+    if not CONFIG_FILE.exists():
+        return "missing_or_corrupted"
+    
+    config = configparser.ConfigParser()
+    try:
+        config.read(CONFIG_FILE)
+        
+        if "SERVER" not in config:
+            return "missing_or_corrupted"
+        
+        server_config = config["SERVER"]
+        
+        critical_params = ["version", "max_ram", "java_path"]
+        missing_critical = [param for param in critical_params if param not in server_config or not server_config[param].strip()]
+        
+        if missing_critical:
+            return "critical_missing"
+        
+        optional_params = ["additional_list", "additional_parameters"]
+        missing_optional = [param for param in optional_params if param not in server_config]
+        
+        if missing_optional:
+            return "optional_missing"
+        
+        try:
+            max_ram = int(server_config["max_ram"])
+            if max_ram <= 0:
+                return "critical_missing"
+        except (ValueError, TypeError):
+            return "critical_missing"
+            
+        java_path = Path(server_config["java_path"])
+        if not java_path.exists():
+            return "critical_missing"
+            
+        return "ok"
+        
+    except (configparser.Error, KeyError, ValueError, TypeError) as e:
+        print(f"Debug: Config parsing error: {e}")
+        return "missing_or_corrupted"
+
 def start_server():
+    config_check_result = check_config_file()
+    if config_check_result == "missing_or_corrupted":
+        print("\nError: Configuration file is missing or corrupted!")
+        print("Please run with --init to create a new configuration first.\n")
+        return
+    
+    elif config_check_result == "critical_missing":
+        print("\nError: Critical configuration parameters are missing!")
+        print("Required parameters: version, max_ram, java_path")
+        print("Please run with --init to fix the configuration first.\n")
+        return
+    
+    elif config_check_result == "optional_missing":
+        print("\nWarning: Some optional configuration parameters are missing.")
+        print("The server will start, but some features may not work properly.")
+        print("Consider running --init to complete the configuration.\n")
     
     port_ok, java_ok, permissions_ok = check_server_requirements()
     
@@ -2263,7 +2321,6 @@ def start_server():
         "--purpur-settings", str(BASE_DIR / "config" / "purpur.yml"),
         "-nogui"
     ]
-    
     
     if additional_params:
         additional_args = additional_params.split()
@@ -2836,7 +2893,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 50)
-    print("     Minecraft Server Management Tool (v3.5)")
+    print("     Minecraft Server Management Tool (v3.6)")
     print("=" * 50)
     print("")
     print("A comprehensive command-line tool for managing")
