@@ -193,7 +193,7 @@ def format_plugins_table(plugins):
 def format_java_table(java_installations):
     path_width = 34
     version_width = 9
-    vendor_width = 10
+    vendor_width = 11
     
     table = []
     table.append("                   - Java Selection -")
@@ -1532,7 +1532,7 @@ def find_java_installations():
             elif "Java(TM) SE" in second_line:
                 vendor = "Oracle JDK"
             elif "Eclipse Temurin" in second_line:
-                vendor = "Eclipse Temurin"
+                vendor = "Temurin"
             elif "Zulu" in second_line:
                 vendor = "Zulu"
             elif "Microsoft" in second_line:
