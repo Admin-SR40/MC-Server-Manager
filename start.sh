@@ -23,7 +23,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "3.6"
+SCRIPT_VERSION = "3.7"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -1273,6 +1273,14 @@ def init_config(prefill_version=None):
     print("         Minecraft Server Initialization")
     print("=" * 50)
     
+    if CONFIG_FILE.exists():
+        print("\nConfiguration file already exists!")
+        print("This will replace your current configuration.")
+        confirm = input("\nDo you want to continue? (Y/N): ").strip().upper()
+        if confirm != "Y":
+            print("\nOperation canceled.\nExisting configuration preserved.\n")
+            return
+    
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     
     config = configparser.ConfigParser()
@@ -1365,6 +1373,14 @@ def init_config_auto(prefill_version=None):
     print("=" * 50)
     print("         Automatic Server Initialization")
     print("=" * 50)
+
+    if CONFIG_FILE.exists():
+        print("\nConfiguration file already exists!")
+        print("This will replace your current configuration.")
+        confirm = input("\nDo you want to continue? (Y/N): ").strip().upper()
+        if confirm != "Y":
+            print("\nOperation canceled.\nExisting configuration preserved.\n")
+            return
 
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     config = configparser.ConfigParser()
@@ -2893,7 +2909,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 50)
-    print("     Minecraft Server Management Tool (v3.6)")
+    print("     Minecraft Server Management Tool (v3.7)")
     print("=" * 50)
     print("")
     print("A comprehensive command-line tool for managing")
