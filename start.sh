@@ -23,7 +23,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "3.8"
+SCRIPT_VERSION = "3.9"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -103,16 +103,24 @@ def handle_pending_task():
     print("\nThe script was terminated unexpectedly during this operation.")
     
     while True:
-        choice = input("\nDo you want to continue with the pending task? (Y/N): ").strip().upper()
+        print("\nYou have the following options:")
+        print(" Y - Continue with the pending task")
+        print(" N - Clear the pending task")
+        print(" Q - Quit the script without making any changes")
+        print("\nYou should NEVER choose 'Y' if you left the workspace unchecked!\n")
+        choice = input("\nEnter your choice (Y/N/Q): ").strip().upper()
         if choice == 'Y':
             print("\nResuming pending task...")
             return pending_command
         elif choice == 'N':
-            print("\nClearing pending task and starting fresh...")
+            print("\nClearing pending task...")
             remove_lock()
             return False
+        elif choice == 'Q':
+            print("\nExiting script without any changes...")
+            sys.exit(0)
         else:
-            print("Please enter Y or N.")
+            print("Please enter Y, N, or Q.")
 
 def check_server_requirements():
     print("Checking server requirements...")
@@ -3064,7 +3072,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 50)
-    print("     Minecraft Server Management Tool (v3.8)")
+    print("     Minecraft Server Management Tool (v3.9)")
     print("=" * 50)
     print("")
     print("A comprehensive command-line tool for managing")
