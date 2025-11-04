@@ -23,7 +23,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "3.7"
+SCRIPT_VERSION = "3.8"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -34,6 +34,7 @@ PLUGINS_DIR = BASE_DIR / "plugins"
 WORLDS_DIR = BASE_DIR / "worlds"
 SERVER_PROPERTIES = BASE_DIR / "config" / "server.properties"
 EULA_FILE = BASE_DIR / "eula.txt"
+LOCK_FILE = BASE_DIR / "task.lock"
 
 BASE_EXCLUDE_LIST = [
     BUNDLES_DIR.name,
@@ -50,6 +51,68 @@ BASE_EXCLUDE_LIST = [
     "temp_jar",
     "info.txt"
 ]
+
+def create_lock(command):
+    try:
+        with open(LOCK_FILE, 'w', encoding='utf-8') as f:
+            f.write(f"Command: {' '.join(command)}\n")
+            f.write(f"Timestamp: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"PID: {os.getpid()}\n")
+        return True
+    except Exception as e:
+        print(f"\nError creating lock file: {e}\n")
+        return False
+
+def remove_lock():
+    try:
+        if LOCK_FILE.exists():
+            LOCK_FILE.unlink()
+        return True
+    except Exception as e:
+        print(f"\nError removing lock file: {e}\n")
+        return False
+
+def check_lock():
+    if not LOCK_FILE.exists():
+        return None
+    
+    try:
+        with open(LOCK_FILE, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        command_match = re.search(r'Command:\s*(.+)', content)
+        if command_match:
+            command_line = command_match.group(1).strip()
+            return command_line.split()
+        
+        return None
+    except Exception as e:
+        print(f"\nError reading lock file: {e}\n")
+        return None
+
+def handle_pending_task():
+    pending_command = check_lock()
+    if not pending_command:
+        return False
+    
+    print("\n" + "=" * 51)
+    print("               PENDING TASK DETECTED")
+    print("=" * 51)
+    print(f"\nPrevious command was interrupted:")
+    print(f"  {pending_command}")
+    print("\nThe script was terminated unexpectedly during this operation.")
+    
+    while True:
+        choice = input("\nDo you want to continue with the pending task? (Y/N): ").strip().upper()
+        if choice == 'Y':
+            print("\nResuming pending task...")
+            return pending_command
+        elif choice == 'N':
+            print("\nClearing pending task and starting fresh...")
+            remove_lock()
+            return False
+        else:
+            print("Please enter Y or N.")
 
 def check_server_requirements():
     print("Checking server requirements...")
@@ -268,139 +331,145 @@ def check_and_accept_eula():
     return True
 
 def reset_worlds():
-    print("\n" + "=" * 52)
-    print("                World Reset Utility")
-    print("=" * 52)
-
-    WORLDS_DIR.mkdir(parents=True, exist_ok=True)
-
-    world_folders = [d for d in WORLDS_DIR.iterdir() if d.is_dir()]
-
-    if not world_folders:
-        print("\nNo world folders found.")
-        choice = input("Do you want to configure a new world seed now? (Y/N): ").strip().upper()
-        if choice == "Y":
-            configure_world_seed()
-        else:
-            print("Skipped seed configuration.\n")
+    if not create_lock(["--reset"]):
+        print("\nError: Could not create task lock\n")
         return
-
-    print("\n                - Existing Worlds -")
-
-    def format_file_size(bytes_size):
-        if bytes_size == 0:
-            return "0 B"
-        units = ['B', 'KB', 'MB', 'GB']
-        size = float(bytes_size)
-        unit_index = 0
-        while size >= 1024 and unit_index < len(units) - 1:
-            size /= 1024
-            unit_index += 1
-        return f"{size:.1f} {units[unit_index]}"
-
-    world_info = []
-    total_size = 0
-    for world_folder in world_folders:
-        try:
-            world_size = sum(f.stat().st_size for f in world_folder.rglob('*') if f.is_file())
-            status = "OK" if (world_folder / "level.dat").exists() else "CORRUPTED"
-            world_info.append((world_folder, world_size, status))
-            total_size += world_size
-        except Exception as e:
-            world_info.append((world_folder, 0, "ERROR"))
-            print(f"Error reading {world_folder.name}: {e}")
-
-    world_info.sort(key=lambda x: x[1], reverse=True)
-
-    name_width = 25
-    size_width = 11
-    status_width = 12
-    print("╔" + "═" * name_width + "╦" + "═" * size_width + "╦" + "═" * status_width + "╗")
-    print("║" + " Worlds".ljust(name_width - 1) +
-          " ║" + " Size".ljust(size_width - 1) +
-          " ║" + " Status".ljust(status_width - 1) + " ║")
-    print("╠" + "═" * name_width + "╬" + "═" * size_width + "╬" + "═" * status_width + "╣")
-
-    for i, (world_folder, size, status) in enumerate(world_info, 1):
-        name_display = f"{i}. {world_folder.name}"
-        print(f"║ {name_display:<{name_width - 1}}"
-              f"║ {format_file_size(size):<{size_width - 1}}"
-              f"║ {status:<{status_width - 1}}║")
-
-    print("╠" + "═" * name_width + "╬" + "═" * size_width + "╬" + "═" * status_width + "╣")
-    print(f"║ {'0. All':<{name_width - 1}}║ {format_file_size(total_size):<{size_width - 1}}║ {'All Worlds':<{status_width - 1}}║")
-    print("╚" + "═" * name_width + "╩" + "═" * size_width + "╩" + "═" * status_width + "╝")
-
+    
     try:
-        selection = input("\nSelect world folders to delete (space-separated numbers, 0 for all): ").strip()
-        if not selection:
-            print("No selection made. Operation canceled.\n")
-            return
+        print("\n" + "=" * 52)
+        print("                World Reset Utility")
+        print("=" * 52)
 
-        selected_indices = []
-        for num_str in selection.split():
-            try:
-                num = int(num_str)
-                if 0 <= num <= len(world_info):
-                    selected_indices.append(num)
-                else:
-                    print(f"Invalid number: {num}")
-                    return
-            except ValueError:
-                print(f"Invalid input: {num_str}")
-                return
+        WORLDS_DIR.mkdir(parents=True, exist_ok=True)
 
-        if 0 in selected_indices:
-            confirm = input("\nAre you sure you want to delete ALL world folders?\nThis cannot be undone! (Y/N): ").strip().upper()
-            if confirm != "Y":
-                print("Operation canceled.\n")
-                return
+        world_folders = [d for d in WORLDS_DIR.iterdir() if d.is_dir()]
 
-            for world_folder, _, _ in world_info:
-                try:
-                    shutil.rmtree(world_folder)
-                    print(f"Deleted: {world_folder.name}")
-                except Exception as e:
-                    print(f"Error deleting {world_folder.name}: {e}")
-
-            print("\nAll world folders deleted successfully.\n")
-
-        else:
-            worlds_to_delete = [world_info[i - 1][0] for i in selected_indices]
-            print("\nYou have selected the following world(s) to delete:")
-            for w in worlds_to_delete:
-                print(f" - {w.name}")
-
-            confirm = input("\nAre you sure you want to delete these world(s)?\nThis cannot be undone! (Y/N): ").strip().upper()
-            if confirm != "Y":
-                print("Operation canceled.\n")
-                return
-
-            for w in worlds_to_delete:
-                try:
-                    shutil.rmtree(w)
-                    print(f"Deleted: {w.name}")
-                except Exception as e:
-                    print(f"Error deleting {w.name}: {e}")
-
-            print("\nSelected world(s) deleted successfully.\n")
-
-        remaining = [d for d in WORLDS_DIR.iterdir() if d.is_dir()]
-        if not remaining:
-            choice = input("All world folders have been removed.\nDo you want to configure a new world seed now? (Y/N): ").strip().upper()
+        if not world_folders:
+            print("\nNo world folders found.")
+            choice = input("Do you want to configure a new world seed now? (Y/N): ").strip().upper()
             if choice == "Y":
                 configure_world_seed()
             else:
                 print("Skipped seed configuration.\n")
-        else:
-            print("Some world folders remain. Skipping seed configuration.\n")
+            return
 
-    except KeyboardInterrupt:
-        print("\nOperation canceled by user.\n")
-    except Exception as e:
-        print(f"Error during world reset: {e}\n")
+        print("\n                - Existing Worlds -")
 
+        def format_file_size(bytes_size):
+            if bytes_size == 0:
+                return "0 B"
+            units = ['B', 'KB', 'MB', 'GB']
+            size = float(bytes_size)
+            unit_index = 0
+            while size >= 1024 and unit_index < len(units) - 1:
+                size /= 1024
+                unit_index += 1
+            return f"{size:.1f} {units[unit_index]}"
 
+        world_info = []
+        total_size = 0
+        for world_folder in world_folders:
+            try:
+                world_size = sum(f.stat().st_size for f in world_folder.rglob('*') if f.is_file())
+                status = "OK" if (world_folder / "level.dat").exists() else "CORRUPTED"
+                world_info.append((world_folder, world_size, status))
+                total_size += world_size
+            except Exception as e:
+                world_info.append((world_folder, 0, "ERROR"))
+                print(f"Error reading {world_folder.name}: {e}")
+
+        world_info.sort(key=lambda x: x[1], reverse=True)
+
+        name_width = 25
+        size_width = 11
+        status_width = 12
+        print("╔" + "═" * name_width + "╦" + "═" * size_width + "╦" + "═" * status_width + "╗")
+        print("║" + " Worlds".ljust(name_width - 1) +
+              " ║" + " Size".ljust(size_width - 1) +
+              " ║" + " Status".ljust(status_width - 1) + " ║")
+        print("╠" + "═" * name_width + "╬" + "═" * size_width + "╬" + "═" * status_width + "╣")
+
+        for i, (world_folder, size, status) in enumerate(world_info, 1):
+            name_display = f"{i}. {world_folder.name}"
+            print(f"║ {name_display:<{name_width - 1}}"
+                  f"║ {format_file_size(size):<{size_width - 1}}"
+                  f"║ {status:<{status_width - 1}}║")
+
+        print("╠" + "═" * name_width + "╬" + "═" * size_width + "╬" + "═" * status_width + "╣")
+        print(f"║ {'0. All':<{name_width - 1}}║ {format_file_size(total_size):<{size_width - 1}}║ {'All Worlds':<{status_width - 1}}║")
+        print("╚" + "═" * name_width + "╩" + "═" * size_width + "╩" + "═" * status_width + "╝")
+
+        try:
+            selection = input("\nSelect world folders to delete (space-separated numbers, 0 for all): ").strip()
+            if not selection:
+                print("No selection made. Operation canceled.\n")
+                return
+
+            selected_indices = []
+            for num_str in selection.split():
+                try:
+                    num = int(num_str)
+                    if 0 <= num <= len(world_info):
+                        selected_indices.append(num)
+                    else:
+                        print(f"Invalid number: {num}")
+                        return
+                except ValueError:
+                    print(f"Invalid input: {num_str}")
+                    return
+
+            if 0 in selected_indices:
+                confirm = input("\nAre you sure you want to delete ALL world folders?\nThis cannot be undone! (Y/N): ").strip().upper()
+                if confirm != "Y":
+                    print("Operation canceled.\n")
+                    return
+
+                for world_folder, _, _ in world_info:
+                    try:
+                        shutil.rmtree(world_folder)
+                        print(f"Deleted: {world_folder.name}")
+                    except Exception as e:
+                        print(f"Error deleting {world_folder.name}: {e}")
+
+                print("\nAll world folders deleted successfully.\n")
+
+            else:
+                worlds_to_delete = [world_info[i - 1][0] for i in selected_indices]
+                print("\nYou have selected the following world(s) to delete:")
+                for w in worlds_to_delete:
+                    print(f" - {w.name}")
+
+                confirm = input("\nAre you sure you want to delete these world(s)?\nThis cannot be undone! (Y/N): ").strip().upper()
+                if confirm != "Y":
+                    print("Operation canceled.\n")
+                    return
+
+                for w in worlds_to_delete:
+                    try:
+                        shutil.rmtree(w)
+                        print(f"Deleted: {w.name}")
+                    except Exception as e:
+                        print(f"Error deleting {w.name}: {e}")
+
+                print("\nSelected world(s) deleted successfully.\n")
+
+            remaining = [d for d in WORLDS_DIR.iterdir() if d.is_dir()]
+            if not remaining:
+                choice = input("All world folders have been removed.\nDo you want to configure a new world seed now? (Y/N): ").strip().upper()
+                if choice == "Y":
+                    configure_world_seed()
+                else:
+                    print("Skipped seed configuration.\n")
+            else:
+                print("Some world folders remain. Skipping seed configuration.\n")
+
+        except KeyboardInterrupt:
+            print("\nOperation canceled by user.\n")
+        except Exception as e:
+            print(f"Error during world reset: {e}\n")
+    
+    finally:
+        remove_lock()
 
 def configure_world_seed():
     if not SERVER_PROPERTIES.exists():
@@ -471,102 +540,110 @@ def configure_world_seed():
     print("")
 
 def create_new_server():
-    print("\n" + "=" * 50)
-    print("               New Server Creation")
-    print("=" * 50)
-    
-    try:
-        config = load_config()
-        current_version = config.get("version", "unknown")
-    except:
-        current_version = "unknown"
-    
-    available_versions = []
-    if BUNDLES_DIR.exists():
-        for version_dir in BUNDLES_DIR.iterdir():
-            if version_dir.is_dir():
-                core_zip = version_dir / "core.zip"
-                if core_zip.exists():
-                    available_versions.append(version_dir.name)
-    
-    if not available_versions:
-        print("\nNo server versions found in bundles directory.")
-        print("Please download a version first using: --get <version>")
+    if not create_lock(["--new"]):
+        print("\nError: Could not create task lock\n")
         return
     
-    print("\nAvailable Versions:")
-    print("=" * 30)
-    sorted_versions = sorted(available_versions, key=lambda v: [int(n) for n in v.split('.')], reverse=True)
-    for i, version in enumerate(sorted_versions, 1):
-        print(f"{i}. {version}")
-    print("=" * 30)
-    
     try:
-        selection = input("\nSelect a version to create (number): ").strip()
-        if not selection:
-            print("No selection made.")
+        print("\n" + "=" * 50)
+        print("               New Server Creation")
+        print("=" * 50)
+        
+        try:
+            config = load_config()
+            current_version = config.get("version", "unknown")
+        except:
+            current_version = "unknown"
+        
+        available_versions = []
+        if BUNDLES_DIR.exists():
+            for version_dir in BUNDLES_DIR.iterdir():
+                if version_dir.is_dir():
+                    core_zip = version_dir / "core.zip"
+                    if core_zip.exists():
+                        available_versions.append(version_dir.name)
+        
+        if not available_versions:
+            print("\nNo server versions found in bundles directory.")
+            print("Please download a version first using: --get <version>")
             return
-        index = int(selection) - 1
-        if not (0 <= index < len(sorted_versions)):
-            print("Invalid selection.")
+        
+        print("\nAvailable Versions:")
+        print("=" * 30)
+        sorted_versions = sorted(available_versions, key=lambda v: [int(n) for n in v.split('.')], reverse=True)
+        for i, version in enumerate(sorted_versions, 1):
+            print(f"{i}. {version}")
+        print("=" * 30)
+        
+        try:
+            selection = input("\nSelect a version to create (number): ").strip()
+            if not selection:
+                print("No selection made.")
+                return
+            index = int(selection) - 1
+            if not (0 <= index < len(sorted_versions)):
+                print("Invalid selection.")
+                return
+            selected_version = sorted_versions[index]
+            print(f"Selected version: {selected_version}")
+        except ValueError:
+            print("Invalid input. Please enter a number.")
             return
-        selected_version = sorted_versions[index]
-        print(f"Selected version: {selected_version}")
-    except ValueError:
-        print("Invalid input. Please enter a number.")
-        return
+        
+        if check_for_updates(selected_version):
+            confirm = input("\nUpdate to latest build before creating? (Y/N): ").strip().upper()
+            if confirm == "Y":
+                download_version(selected_version)
+        
+        show_version_info(selected_version)
+        
+        core_zip_path = BUNDLES_DIR / selected_version / "core.zip"
+        if not core_zip_path.exists():
+            print(f"Error: core.zip missing for {selected_version}")
+            return
+        
+        print("\nCreating new server...")
+        exclude_list = get_exclude_list()
+        for item in BASE_DIR.iterdir():
+            if any(fnmatch.fnmatch(item.name, pattern) for pattern in exclude_list):
+                continue
+            if item.is_dir():
+                shutil.rmtree(item, ignore_errors=True)
+            else:
+                try:
+                    item.unlink()
+                except:
+                    pass
+        
+        try:
+            with zipfile.ZipFile(core_zip_path, 'r') as zipf:
+                zipf.extractall(BASE_DIR)
+            print(f"Extracted core for version {selected_version}")
+        except Exception as e:
+            print(f"Error extracting core: {e}\n")
+            return
+        
+        print("\nInitialization options:")
+        print("1. Enter --init")
+        print("2. Enter --init auto")
+        print("3. Exit without initialization")
+        
+        while True:
+            choice = input("\nYour choice (1-3): ").strip()
+            if choice == "1":
+                init_config(prefill_version=selected_version)
+                break
+            elif choice == "2":
+                init_config_auto(prefill_version=selected_version)
+                break
+            elif choice == "3":
+                print("Server created but not initialized.")
+                break
+            else:
+                print("Invalid input. Choose 1, 2, or 3.")
     
-    if check_for_updates(selected_version):
-        confirm = input("\nUpdate to latest build before creating? (Y/N): ").strip().upper()
-        if confirm == "Y":
-            download_version(selected_version)
-    
-    show_version_info(selected_version)
-    
-    core_zip_path = BUNDLES_DIR / selected_version / "core.zip"
-    if not core_zip_path.exists():
-        print(f"Error: core.zip missing for {selected_version}")
-        return
-    
-    print("\nCreating new server...")
-    exclude_list = get_exclude_list()
-    for item in BASE_DIR.iterdir():
-        if any(fnmatch.fnmatch(item.name, pattern) for pattern in exclude_list):
-            continue
-        if item.is_dir():
-            shutil.rmtree(item, ignore_errors=True)
-        else:
-            try:
-                item.unlink()
-            except:
-                pass
-    
-    try:
-        with zipfile.ZipFile(core_zip_path, 'r') as zipf:
-            zipf.extractall(BASE_DIR)
-        print(f"Extracted core for version {selected_version}")
-    except Exception as e:
-        print(f"Error extracting core: {e}\n")
-        return
-    
-    print("\nInitialization options:")
-    print("1. Enter --init")
-    print("2. Enter --init auto")
-    print("3. Exit without initialization")
-    
-    while True:
-        choice = input("\nYour choice (1-3): ").strip()
-        if choice == "1":
-            init_config(prefill_version=selected_version)
-            break
-        elif choice == "2":
-            init_config_auto(prefill_version=selected_version)
-            break
-        elif choice == "3":
-            print("Server created but not initialized.")
-            break
-        else:
-            print("Invalid input. Choose 1, 2, or 3.")
+    finally:
+        remove_lock()
 
 def check_for_updates(version):
     print(f"\nChecking for updates for version {version}...")
@@ -657,99 +734,107 @@ def show_version_info(version):
         print(f"Error reading version info: {e}")
 
 def download_version(version=None):
-    if version is None:
-        try:
-            with urllib.request.urlopen("https://api.purpurmc.org/v2/purpur", timeout=10) as response:
-                data = json.loads(response.read().decode())
-                versions = data.get("versions", [])
-                
-                version_groups = {}
-                for v in versions:
-                    major_version = ".".join(v.split(".")[:2])
-                    if major_version not in version_groups:
-                        version_groups[major_version] = []
-                    version_groups[major_version].append(v)
-                
-                print("\nAvailable Versions:")
-                print("=" * 50)
-                for major, minors in sorted(version_groups.items(), reverse=True):
-                    print(f"[{major}]: {', '.join(sorted(minors, reverse=True))}")
-                print("=" * 50)
-                print("")
-                
-        except Exception as e:
-            print(f"Error fetching available versions: {e}\n")
-            return
-    else:
-        target_dir = BUNDLES_DIR / version
-        zip_path = target_dir / "core.zip"
-        
-        print(f"\nFetching version information for {version}...")
-        
-        try:
-            with urllib.request.urlopen(f"https://api.purpurmc.org/v2/purpur/{version}", timeout=10) as response:
-                version_data = json.loads(response.read().decode())
-                
-            builds = version_data.get("builds", {})
-            latest_build = builds.get("latest")
-            all_builds = builds.get("all", [])
-            
-            if not all_builds:
-                print(f"No builds found for version {version}\n")
-                return
-                
-            all_builds.sort(key=int, reverse=True)
-            
-            successful_build = None
-            build_data = None
-            for build in all_builds:
-                print(f"Checking build {build}...")
-                
-                try:
-                    with urllib.request.urlopen(f"https://api.purpurmc.org/v2/purpur/{version}/{build}", timeout=10) as build_response:
-                        build_data = json.loads(build_response.read().decode())
+    command = ["--get"]
+    if version:
+        command.append(version)
+    if not create_lock(command):
+        print("\nError: Could not create task lock\n")
+        return
+    
+    try:
+        if version is None:
+            try:
+                with urllib.request.urlopen("https://api.purpurmc.org/v2/purpur", timeout=10) as response:
+                    data = json.loads(response.read().decode())
+                    versions = data.get("versions", [])
                     
-                    if build_data.get("result") == "SUCCESS":
-                        successful_build = build
-                        print(f"Found successful build: {build}")
+                    version_groups = {}
+                    for v in versions:
+                        major_version = ".".join(v.split(".")[:2])
+                        if major_version not in version_groups:
+                            version_groups[major_version] = []
+                        version_groups[major_version].append(v)
+                    
+                    print("\nAvailable Versions:")
+                    print("=" * 50)
+                    for major, minors in sorted(version_groups.items(), reverse=True):
+                        print(f"[{major}]: {', '.join(sorted(minors, reverse=True))}")
+                    print("=" * 50)
+                    print("")
+                    
+            except Exception as e:
+                print(f"Error fetching available versions: {e}\n")
+                return
+        else:
+            target_dir = BUNDLES_DIR / version
+            zip_path = target_dir / "core.zip"
+            
+            print(f"\nFetching version information for {version}...")
+            
+            try:
+                with urllib.request.urlopen(f"https://api.purpurmc.org/v2/purpur/{version}", timeout=10) as response:
+                    version_data = json.loads(response.read().decode())
+                    
+                builds = version_data.get("builds", {})
+                latest_build = builds.get("latest")
+                all_builds = builds.get("all", [])
+                
+                if not all_builds:
+                    print(f"No builds found for version {version}\n")
+                    return
+                    
+                all_builds.sort(key=int, reverse=True)
+                
+                successful_build = None
+                build_data = None
+                for build in all_builds:
+                    print(f"Checking build {build}...")
+                    
+                    try:
+                        with urllib.request.urlopen(f"https://api.purpurmc.org/v2/purpur/{version}/{build}", timeout=10) as build_response:
+                            build_data = json.loads(build_response.read().decode())
                         
-                        print("\nBuild Information:")
-                        print("=" * 50)
-                        
-                        timestamp = build_data.get("timestamp")
-                        build_date = ""
-                        if timestamp:
-                            build_date = datetime.datetime.fromtimestamp(timestamp / 1000).strftime("%Y-%m-%d %H:%M:%S")
-                        
-                        commits = build_data.get("commits", [])
-                        description = "No description available"
-                        author = "Unknown"
-                        
-                        if commits:
-                            for commit in commits:
-                                author = commit.get("author", "Unknown")
-                                description = commit.get("description", "No description")
-                                
-                                description = description.strip()
-                                description = re.sub(r'\n\s*\n', '\n\n', description)
-                                
-                                print(f"Author: {author}")
-                                print(f"Date: {build_date}")
+                        if build_data.get("result") == "SUCCESS":
+                            successful_build = build
+                            print(f"Found successful build: {build}")
+                            
+                            print("\nBuild Information:")
+                            print("=" * 50)
+                            
+                            timestamp = build_data.get("timestamp")
+                            build_date = ""
+                            if timestamp:
+                                build_date = datetime.datetime.fromtimestamp(timestamp / 1000).strftime("%Y-%m-%d %H:%M:%S")
+                            
+                            commits = build_data.get("commits", [])
+                            description = "No description available"
+                            author = "Unknown"
+                            
+                            if commits:
+                                for commit in commits:
+                                    author = commit.get("author", "Unknown")
+                                    description = commit.get("description", "No description")
+                                    
+                                    description = description.strip()
+                                    description = re.sub(r'\n\s*\n', '\n\n', description)
+                                    
+                                    print(f"Author: {author}")
+                                    print(f"Date: {build_date}")
+                                    md5_hash = build_data.get("md5", "Not available")
+                                    print(f"MD5: {md5_hash}")
+                                    print("")
+                                    print("Description:")
+                                    print(f"{description}")
+                                    print("=" * 50)
+                                    print("")
+                            else:
+                                print("No commit information available.")
                                 md5_hash = build_data.get("md5", "Not available")
                                 print(f"MD5: {md5_hash}")
-                                print("")
-                                print("Description:")
-                                print(f"{description}")
                                 print("=" * 50)
                                 print("")
-                        else:
-                            print("No commit information available.")
-                            md5_hash = build_data.get("md5", "Not available")
-                            print(f"MD5: {md5_hash}")
-                            print("=" * 50)
-                            print("")
-                        
-                        info_content = f"""====================
+                            
+                            info_content = f"""====================
 Build {successful_build}
 Version {version}
 
@@ -760,95 +845,97 @@ MD5: {md5_hash}
 Description:
 {description}
 ===================="""
-                        
-                        break
-                except Exception as e:
-                    print(f"Error checking build {build}: {e}\n")
-                    continue
-            
-            if not successful_build:
-                print(f"No successful builds found for version {version}\n")
-                return
+                            
+                            break
+                    except Exception as e:
+                        print(f"Error checking build {build}: {e}\n")
+                        continue
                 
-            confirm = input("Do you want to download this version? (Y/N): ").strip().upper()
-            if confirm != "Y":
-                print("Download canceled.\n")
-                return
-                
-            if zip_path.exists():
-                confirm = input(f"Version {version} already exists. Overwrite? (Y/N): ").strip().upper()
+                if not successful_build:
+                    print(f"No successful builds found for version {version}\n")
+                    return
+                    
+                confirm = input("Do you want to download this version? (Y/N): ").strip().upper()
                 if confirm != "Y":
                     print("Download canceled.\n")
                     return
-                
-            download_url = f"https://api.purpurmc.org/v2/purpur/{version}/{successful_build}/download"
-            print(f"\nDownloading from {download_url}...")
-            print("This may take a while depending on your network speed.")
-            print("Press CTRL+C to cancel the download.\n")
-            
-            target_dir.mkdir(parents=True, exist_ok=True)
-            
-            temp_jar = target_dir / "temp_core.jar"
-            
-            try:
-                with urllib.request.urlopen(download_url) as download_response:
-                    with open(temp_jar, 'wb') as f:
-                        while True:
-                            chunk = download_response.read(8192)
-                            if not chunk:
-                                break
-                            f.write(chunk)
-                
-                expected_md5 = build_data.get("md5")
-                if expected_md5:
-                    print("Verifying file integrity...")
-                    with open(temp_jar, 'rb') as f:
-                        file_hash = hashlib.md5()
-                        while chunk := f.read(8192):
-                            file_hash.update(chunk)
-                        actual_md5 = file_hash.hexdigest()
                     
-                    if actual_md5 != expected_md5:
-                        print(f"MD5 verification failed!")
-                        print(f"Expected: {expected_md5}")
-                        print(f"Got: {actual_md5}")
-                        print("")
-                        print("The downloaded file may be corrupted.")
-                        print("The file will be deleted due to security reasons.\n")
-                        temp_jar.unlink()
-                        if zip_path.exists():
-                            zip_path.unlink()
-                        return
-                    print("MD5 verified successfully!\n")
-                
-                with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                    zipf.write(temp_jar, "core.jar")
-                    
-                    info_file = target_dir / "info.txt"
-                    with open(info_file, 'w', encoding='utf-8') as f:
-                        f.write(info_content)
-                    zipf.write(info_file, "info.txt")
-                    info_file.unlink()
-                
-                temp_jar.unlink()
-                
-                print(f"Successfully downloaded {version} (build {successful_build}) to {zip_path}\n")
-                
-            except KeyboardInterrupt:
-                print("\nDownload canceled by user.\n")
-                if temp_jar.exists():
-                    temp_jar.unlink()
                 if zip_path.exists():
-                    zip_path.unlink()
-                return
+                    confirm = input(f"Version {version} already exists. Overwrite? (Y/N): ").strip().upper()
+                    if confirm != "Y":
+                        print("Download canceled.\n")
+                        return
+                    
+                download_url = f"https://api.purpurmc.org/v2/purpur/{version}/{successful_build}/download"
+                print(f"\nDownloading from {download_url}...")
+                print("This may take a while depending on your network speed.")
+                print("Press CTRL+C to cancel the download.\n")
                 
-        except urllib.error.HTTPError as e:
-            if e.code == 404:
-                print(f"Version {version} not found on PurpurMC\n")
-            else:
-                print(f"HTTP Error: {e.code} - {e.reason}\n")
-        except Exception as e:
-            print(f"Error downloading version {version}: {e}\n")
+                target_dir.mkdir(parents=True, exist_ok=True)
+                
+                temp_jar = target_dir / "temp_core.jar"
+                
+                try:
+                    with urllib.request.urlopen(download_url) as download_response:
+                        with open(temp_jar, 'wb') as f:
+                            while True:
+                                chunk = download_response.read(8192)
+                                if not chunk:
+                                    break
+                                f.write(chunk)
+                    
+                    expected_md5 = build_data.get("md5")
+                    if expected_md5:
+                        print("Verifying file integrity...")
+                        with open(temp_jar, 'rb') as f:
+                            file_hash = hashlib.md5()
+                            while chunk := f.read(8192):
+                                file_hash.update(chunk)
+                            actual_md5 = file_hash.hexdigest()
+                        
+                        if actual_md5 != expected_md5:
+                            print(f"MD5 verification failed!")
+                            print(f"Expected: {expected_md5}")
+                            print(f"Got: {actual_md5}")
+                            print("")
+                            print("The downloaded file may be corrupted.")
+                            print("The file will be deleted due to security reasons.\n")
+                            temp_jar.unlink()
+                            if zip_path.exists():
+                                zip_path.unlink()
+                            return
+                        print("MD5 verified successfully!\n")
+                    
+                    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                        zipf.write(temp_jar, "core.jar")
+                        
+                        info_file = target_dir / "info.txt"
+                        with open(info_file, 'w', encoding='utf-8') as f:
+                            f.write(info_content)
+                        zipf.write(info_file, "info.txt")
+                        info_file.unlink()
+                    
+                    temp_jar.unlink()
+                    
+                    print(f"Successfully downloaded {version} (build {successful_build}) to {zip_path}\n")
+                    
+                except KeyboardInterrupt:
+                    print("\nDownload canceled by user.\n")
+                    if temp_jar.exists():
+                        temp_jar.unlink()
+                    if zip_path.exists():
+                        zip_path.unlink()
+                    return
+                    
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    print(f"Version {version} not found on PurpurMC\n")
+                else:
+                    print(f"HTTP Error: {e.code} - {e.reason}\n")
+            except Exception as e:
+                print(f"Error downloading version {version}: {e}\n")
+    finally:
+        remove_lock()
 
 def get_exclude_list():
     exclude_list = BASE_EXCLUDE_LIST.copy()
@@ -1746,6 +1833,10 @@ def save_version(version):
         print("Usage: --save <version>")
         return
     
+    if not create_lock(["--save", version]):
+        print("\nError: Could not create task lock\n")
+        return
+    
     try:
         config = load_config()
         current_version = config.get("version", "unknown")
@@ -1805,13 +1896,19 @@ def save_version(version):
     finally:
         if temp_dir.exists():
             shutil.rmtree(temp_dir, ignore_errors=True)
+        remove_lock()
 
 def backup_version():
+    if not create_lock(["--backup"]):
+        print("\nError: Could not create task lock\n")
+        return
+    
     try:
         config = load_config()
         version = config.get("version", "unknown")
     except:
         print("Error: Could not load configuration to determine current version\n")
+        remove_lock()
         return
     
     target_dir = BUNDLES_DIR / version
@@ -1866,12 +1963,18 @@ def backup_version():
         print(f"Error creating backup: {e}\n")
         import traceback
         traceback.print_exc()
-        
-    shutil.rmtree(temp_dir, ignore_errors=True)
+    finally:
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        remove_lock()
 
 def delete_version(version):
     if not version:
         print("Usage: --delete <version>")
+        return
+    
+    if not create_lock(["--delete", version]):
+        print("\nError: Could not create task lock\n")
         return
     
     target_dir = BUNDLES_DIR / version
@@ -1880,11 +1983,13 @@ def delete_version(version):
         print("")
         print(f"Version {version} does not exist")
         print("")
+        remove_lock()
         return
     
     confirm = input(f"\nAre you sure you want to delete version '{version}'? (Y/N): ")
     if confirm != "Y":
         print("Deletion canceled\n")
+        remove_lock()
         return
     
     try:
@@ -1892,14 +1997,21 @@ def delete_version(version):
         print(f"Version {version} deleted successfully\n")
     except Exception as e:
         print(f"Error deleting version: {e}\n")
+    finally:
+        remove_lock()
 
 def change_version(target_version):
     if not target_version:
         print("Usage: --change <version>")
         return
     
+    if not create_lock(["--change", target_version]):
+        print("\nError: Could not create task lock\n")
+        return
+    
     if not CONFIG_FILE.exists():
         print("\nConfiguration file not found! Run with --init first.\n")
+        remove_lock()
         return
     
     try:
@@ -1919,6 +2031,7 @@ def change_version(target_version):
         if not zip_path.exists():
             print(f"Version {target_version} not found")
             print("")
+            remove_lock()
             return
         
         print(f"Switching to version {target_version}...")
@@ -1959,139 +2072,155 @@ def change_version(target_version):
         print(f"Error switching version: {e}\n")
         import traceback
         traceback.print_exc()
+    finally:
+        remove_lock()
 
 def cleanup_files():
-    print("\nPreparing to clean up server files...")
+    if not create_lock(["--cleanup"]):
+        print("\nError: Could not create task lock\n")
+        return
     
-    cleanup_patterns = [
-        BASE_DIR / "logs" / "*",
-        BASE_DIR / "worlds" / "usercache.json",
-        BASE_DIR / "worlds" / "*" / "level.dat_old",
-        BASE_DIR / "worlds" / "*" / "session.lock"
-    ]
-    
-    files_to_clean = []
-    for pattern in cleanup_patterns:
-        if "*" in str(pattern):
-            files_to_clean.extend(glob.glob(str(pattern)))
-        else:
-            if pattern.exists():
-                files_to_clean.append(str(pattern))
-    
-    if not files_to_clean:
-        print("No files to clean up found.")
+    try:
+        print("\nPreparing to clean up server files...")
+        
+        cleanup_patterns = [
+            BASE_DIR / "logs" / "*",
+            BASE_DIR / "worlds" / "usercache.json",
+            BASE_DIR / "worlds" / "*" / "level.dat_old",
+            BASE_DIR / "worlds" / "*" / "session.lock"
+        ]
+        
+        files_to_clean = []
+        for pattern in cleanup_patterns:
+            if "*" in str(pattern):
+                files_to_clean.extend(glob.glob(str(pattern)))
+            else:
+                if pattern.exists():
+                    files_to_clean.append(str(pattern))
+        
+        if not files_to_clean:
+            print("No files to clean up found.")
+            print("")
+            return
+        
+        print("\nThe following files will be deleted:")
+        print("=" * 50)
+        for file_path in files_to_clean:
+            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+            print(f"{file_path} ({file_size} bytes)")
+        print("=" * 50)
+        
+        total_size = sum(os.path.getsize(f) for f in files_to_clean if os.path.exists(f))
+        print(f"Total space to free: {total_size} bytes (~{total_size // (1024*1024)} MB)\n")
+        
+        confirm = input("Are you sure you want to delete these files? (Y/N): ")
+        if confirm != "Y":
+            print("Cleanup canceled.\n")
+            return
+        
         print("")
-        return
+        deleted_count = 0
+        freed_space = 0
+        
+        for file_path in files_to_clean:
+            try:
+                if os.path.exists(file_path):
+                    file_size = os.path.getsize(file_path)
+                    if os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+                    else:
+                        os.remove(file_path)
+                    deleted_count += 1
+                    freed_space += file_size
+                    print(f"Deleted: {file_path}")
+            except Exception as e:
+                print(f"Error deleting {file_path}: {e}\n")
+        
+        print(f"\nCleanup completed. Deleted {deleted_count} files, freed {freed_space} bytes (~{freed_space // (1024*1024)} MB).\n")
     
-    print("\nThe following files will be deleted:")
-    print("=" * 50)
-    for file_path in files_to_clean:
-        file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
-        print(f"{file_path} ({file_size} bytes)")
-    print("=" * 50)
-    
-    total_size = sum(os.path.getsize(f) for f in files_to_clean if os.path.exists(f))
-    print(f"Total space to free: {total_size} bytes (~{total_size // (1024*1024)} MB)\n")
-    
-    confirm = input("Are you sure you want to delete these files? (Y/N): ")
-    if confirm != "Y":
-        print("Cleanup canceled.\n")
-        return
-    
-    print("")
-    deleted_count = 0
-    freed_space = 0
-    
-    for file_path in files_to_clean:
-        try:
-            if os.path.exists(file_path):
-                file_size = os.path.getsize(file_path)
-                if os.path.isdir(file_path):
-                    shutil.rmtree(file_path)
-                else:
-                    os.remove(file_path)
-                deleted_count += 1
-                freed_space += file_size
-                print(f"Deleted: {file_path}")
-        except Exception as e:
-            print(f"Error deleting {file_path}: {e}\n")
-    
-    print(f"\nCleanup completed. Deleted {deleted_count} files, freed {freed_space} bytes (~{freed_space // (1024*1024)} MB).\n")
+    finally:
+        remove_lock()
 
 def dump_logs():
-    logs_dir = BASE_DIR / "logs"
-    
-    if not logs_dir.exists() or not any(logs_dir.iterdir()):
-        print("")
-        print("No log files found to dump.")
-        print("")
+    command = ["--dump"] + sys.argv[2:]
+    if not create_lock(command):
+        print("\nError: Could not create task lock\n")
         return
     
-    search_terms = sys.argv[2:] if len(sys.argv) > 2 else []
-    
-    if search_terms:
-        print("\n" + "=" * 45)
-        print("          Log Search Utility")
-        print("=" * 45)
-        print(f"Searching for: {', '.join(search_terms)} (case-insensitive)")
+    try:
+        logs_dir = BASE_DIR / "logs"
         
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = BASE_DIR / f"logs_search_{timestamp}.zip"
+        if not logs_dir.exists() or not any(logs_dir.iterdir()):
+            print("")
+            print("No log files found to dump.")
+            print("")
+            return
         
-        temp_dir = BASE_DIR / f"temp_search_{timestamp}"
-        temp_dir.mkdir(parents=True, exist_ok=True)
+        search_terms = sys.argv[2:] if len(sys.argv) > 2 else []
         
-        try:
-            files_scanned = 0
-            files_matched = 0
-            total_matched_lines = 0
+        if search_terms:
+            print("\n" + "=" * 45)
+            print("          Log Search Utility")
+            print("=" * 45)
+            print(f"Searching for: {', '.join(search_terms)} (case-insensitive)")
             
-            for log_file in logs_dir.rglob("*"):
-                if not log_file.is_file():
-                    continue
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_file = BASE_DIR / f"logs_search_{timestamp}.zip"
+            
+            temp_dir = BASE_DIR / f"temp_search_{timestamp}"
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            
+            try:
+                files_scanned = 0
+                files_matched = 0
+                total_matched_lines = 0
                 
-                files_scanned += 1
-                file_matched_lines = 0
-                file_content = []
-                
-                try:
-                    if log_file.suffix == '.gz':
-                        with gzip.open(log_file, 'rt', encoding='utf-8', errors='ignore') as f:
-                            for line_num, line in enumerate(f, 1):
-                                line_lower = line.lower()
-                                if any(term.lower() in line_lower for term in search_terms):
-                                    file_matched_lines += 1
-                                    file_content.append(f"Line {line_num}: {line.rstrip()}")
-                    else:
-                        with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
-                            for line_num, line in enumerate(f, 1):
-                                line_lower = line.lower()
-                                if any(term.lower() in line_lower for term in search_terms):
-                                    file_matched_lines += 1
-                                    file_content.append(f"Line {line_num}: {line.rstrip()}")
+                for log_file in logs_dir.rglob("*"):
+                    if not log_file.is_file():
+                        continue
                     
-                    if file_content:
-                        files_matched += 1
-                        total_matched_lines += file_matched_lines
+                    files_scanned += 1
+                    file_matched_lines = 0
+                    file_content = []
+                    
+                    try:
+                        if log_file.suffix == '.gz':
+                            with gzip.open(log_file, 'rt', encoding='utf-8', errors='ignore') as f:
+                                for line_num, line in enumerate(f, 1):
+                                    line_lower = line.lower()
+                                    if any(term.lower() in line_lower for term in search_terms):
+                                        file_matched_lines += 1
+                                        file_content.append(f"Line {line_num}: {line.rstrip()}")
+                        else:
+                            with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
+                                for line_num, line in enumerate(f, 1):
+                                    line_lower = line.lower()
+                                    if any(term.lower() in line_lower for term in search_terms):
+                                        file_matched_lines += 1
+                                        file_content.append(f"Line {line_num}: {line.rstrip()}")
                         
-                        rel_path = log_file.relative_to(logs_dir)
-                        output_filename = temp_dir / f"{rel_path}.matched.txt"
-                        output_filename.parent.mkdir(parents=True, exist_ok=True)
-                        
-                        with open(output_filename, 'w', encoding='utf-8') as f:
-                            f.write("=" * 20 + "\n")
-                            f.write(f"{rel_path}\n")
-                            f.write("=" * 20 + "\n\n")
-                            f.write("\n".join(file_content))
-                            f.write("\n")
-                        
-                        print(f"Found {file_matched_lines} matches in: {rel_path}")
-                        
-                except Exception as e:
-                    print(f"Error processing {log_file}: {e}")
-                    continue
-            
-            report_content = f"""==============================
+                        if file_content:
+                            files_matched += 1
+                            total_matched_lines += file_matched_lines
+                            
+                            rel_path = log_file.relative_to(logs_dir)
+                            output_filename = temp_dir / f"{rel_path}.matched.txt"
+                            output_filename.parent.mkdir(parents=True, exist_ok=True)
+                            
+                            with open(output_filename, 'w', encoding='utf-8') as f:
+                                f.write("=" * 20 + "\n")
+                                f.write(f"{rel_path}\n")
+                                f.write("=" * 20 + "\n\n")
+                                f.write("\n".join(file_content))
+                                f.write("\n")
+                            
+                            print(f"Found {file_matched_lines} matches in: {rel_path}")
+                            
+                    except Exception as e:
+                        print(f"Error processing {log_file}: {e}")
+                        continue
+                
+                report_content = f"""==============================
         Log Dump Report
 ==============================
 
@@ -2102,80 +2231,80 @@ def dump_logs():
  - Total lines matched: {total_matched_lines}
  - Archive file: {output_file.name}"""
 
-            report_file = temp_dir / "report.txt"
-            with open(report_file, 'w', encoding='utf-8') as f:
-                f.write(report_content)
-            
-            if files_matched > 0:
-                with zipfile.ZipFile(output_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                    for file_path in temp_dir.rglob("*"):
-                        if file_path.is_file():
-                            arcname = file_path.relative_to(temp_dir)
-                            zipf.write(file_path, arcname)
+                report_file = temp_dir / "report.txt"
+                with open(report_file, 'w', encoding='utf-8') as f:
+                    f.write(report_content)
                 
-                file_size = os.path.getsize(output_file)
-                
-                print("\n" + "=" * 45)
-                print(f"Dumped {files_matched} log files.")
-                print(f"Found {total_matched_lines} matching lines in {files_matched} files.")
-                print(f"\nResult saved to: {output_file.name}")
-                print(f"File size: {file_size} bytes (~{file_size // (1024*1024)} MB)")
-                print("=" * 45)
-                
-                confirm = input("\nDo you want to delete the original log files? (Y/N): ").strip().upper()
-                if confirm == "Y":
-                    deleted_count = 0
-                    freed_space = 0
-                    for log_file in logs_dir.rglob("*"):
-                        if log_file.is_file():
-                            try:
-                                file_size = log_file.stat().st_size
-                                log_file.unlink()
-                                deleted_count += 1
-                                freed_space += file_size
-                            except Exception as e:
-                                print(f"Error deleting {log_file}: {e}")
+                if files_matched > 0:
+                    with zipfile.ZipFile(output_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                        for file_path in temp_dir.rglob("*"):
+                            if file_path.is_file():
+                                arcname = file_path.relative_to(temp_dir)
+                                zipf.write(file_path, arcname)
                     
-                    print(f"Deleted {deleted_count} log files, freed {freed_space} bytes.")
+                    file_size = os.path.getsize(output_file)
+                    
+                    print("\n" + "=" * 45)
+                    print(f"Dumped {files_matched} log files.")
+                    print(f"Found {total_matched_lines} matching lines in {files_matched} files.")
+                    print(f"\nResult saved to: {output_file.name}")
+                    print(f"File size: {file_size} bytes (~{file_size // (1024*1024)} MB)")
+                    print("=" * 45)
+                    
+                    confirm = input("\nDo you want to delete the original log files? (Y/N): ").strip().upper()
+                    if confirm == "Y":
+                        deleted_count = 0
+                        freed_space = 0
+                        for log_file in logs_dir.rglob("*"):
+                            if log_file.is_file():
+                                try:
+                                    file_size = log_file.stat().st_size
+                                    log_file.unlink()
+                                    deleted_count += 1
+                                    freed_space += file_size
+                                except Exception as e:
+                                    print(f"Error deleting {log_file}: {e}")
+                        
+                        print(f"Deleted {deleted_count} log files, freed {freed_space} bytes.")
                 
-            else:
-                print("\nNo matching content found in any log files.")
-            
-            print("")
-            
-        except Exception as e:
-            print(f"Error creating log search: {e}")
-            import traceback
-            traceback.print_exc()
-        finally:
-            if temp_dir.exists():
-                shutil.rmtree(temp_dir, ignore_errors=True)
-    
-    else:
-        print("\n" + "=" * 45)
-        print("          Log Dump Utility")
-        print("=" * 45)
+                else:
+                    print("\nNo matching content found in any log files.")
+                
+                print("")
+                
+            except Exception as e:
+                print(f"Error creating log search: {e}")
+                import traceback
+                traceback.print_exc()
+            finally:
+                if temp_dir.exists():
+                    shutil.rmtree(temp_dir, ignore_errors=True)
         
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = BASE_DIR / f"logs_dump_{timestamp}.zip"
-        
-        print(f"\nCreating complete log dump...")
-        
-        try:
-            temp_dir = BASE_DIR / f"temp_logs_{timestamp}"
-            temp_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            print("\n" + "=" * 45)
+            print("          Log Dump Utility")
+            print("=" * 45)
             
-            file_count = 0
-            for root, _, files in os.walk(logs_dir):
-                for file in files:
-                    src_path = os.path.join(root, file)
-                    rel_path = os.path.relpath(src_path, BASE_DIR)
-                    dest_path = temp_dir / rel_path
-                    dest_path.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(src_path, dest_path)
-                    file_count += 1
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_file = BASE_DIR / f"logs_dump_{timestamp}.zip"
             
-            report_content = f"""==============================
+            print(f"\nCreating complete log dump...")
+            
+            try:
+                temp_dir = BASE_DIR / f"temp_logs_{timestamp}"
+                temp_dir.mkdir(parents=True, exist_ok=True)
+                
+                file_count = 0
+                for root, _, files in os.walk(logs_dir):
+                    for file in files:
+                        src_path = os.path.join(root, file)
+                        rel_path = os.path.relpath(src_path, BASE_DIR)
+                        dest_path = temp_dir / rel_path
+                        dest_path.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(src_path, dest_path)
+                        file_count += 1
+                
+                report_content = f"""==============================
         Log Dump Report
 ==============================
 
@@ -2186,51 +2315,54 @@ def dump_logs():
  - Total lines matched: N/A (full dump)
  - Archive file: {output_file.name}"""
 
-            report_file = temp_dir / "report.txt"
-            with open(report_file, 'w', encoding='utf-8') as f:
-                f.write(report_content)
-            
-            with zipfile.ZipFile(output_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                for root, _, files in os.walk(temp_dir):
-                    for file in files:
-                        file_path = os.path.join(root, file)
-                        arcname = os.path.relpath(file_path, temp_dir)
-                        zipf.write(file_path, arcname)
-            
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            
-            file_size = os.path.getsize(output_file)
-            print("\n" + "=" * 45)
-            print(f"Dumped {file_count} log files.")
-            print(f"Result saved to: {output_file.name}")
-            print(f"File size: {file_size} bytes (~{file_size // (1024*1024)} MB)")
-            print("=" * 45)
-            
-            confirm = input("\nDo you want to delete the original log files? (Y/N): ").strip().upper()
-            if confirm == "Y":
-                deleted_count = 0
-                freed_space = 0
-                for root, _, files in os.walk(logs_dir):
-                    for file in files:
-                        file_path = os.path.join(root, file)
-                        try:
-                            file_size = os.path.getsize(file_path)
-                            os.remove(file_path)
-                            deleted_count += 1
-                            freed_space += file_size
-                        except Exception as e:
-                            print(f"Error deleting {file_path}: {e}")
+                report_file = temp_dir / "report.txt"
+                with open(report_file, 'w', encoding='utf-8') as f:
+                    f.write(report_content)
                 
-                print(f"Deleted {deleted_count} log files, freed {freed_space} bytes.")
-            
-            print("")
-            
-        except Exception as e:
-            print(f"Error creating log dump: {e}\n")
-            import traceback
-            traceback.print_exc()
-            if temp_dir.exists():
+                with zipfile.ZipFile(output_file, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    for root, _, files in os.walk(temp_dir):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            arcname = os.path.relpath(file_path, temp_dir)
+                            zipf.write(file_path, arcname)
+                
                 shutil.rmtree(temp_dir, ignore_errors=True)
+                
+                file_size = os.path.getsize(output_file)
+                print("\n" + "=" * 45)
+                print(f"Dumped {file_count} log files.")
+                print(f"Result saved to: {output_file.name}")
+                print(f"File size: {file_size} bytes (~{file_size // (1024*1024)} MB)")
+                print("=" * 45)
+                
+                confirm = input("\nDo you want to delete the original log files? (Y/N): ").strip().upper()
+                if confirm == "Y":
+                    deleted_count = 0
+                    freed_space = 0
+                    for root, _, files in os.walk(logs_dir):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            try:
+                                file_size = os.path.getsize(file_path)
+                                os.remove(file_path)
+                                deleted_count += 1
+                                freed_space += file_size
+                            except Exception as e:
+                                print(f"Error deleting {file_path}: {e}")
+                    
+                    print(f"Deleted {deleted_count} log files, freed {freed_space} bytes.")
+                
+                print("")
+                
+            except Exception as e:
+                print(f"Error creating log dump: {e}\n")
+                import traceback
+                traceback.print_exc()
+                if temp_dir.exists():
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+    
+    finally:
+        remove_lock()
 
 def check_config_file():
     if not CONFIG_FILE.exists():
@@ -2390,11 +2522,16 @@ def format_backup_name(filename, version):
     return filename.replace(".zip", "")
 
 def rollback_version():
+    if not create_lock(["--rollback"]):
+        print("\nError: Could not create task lock\n")
+        return
+    
     try:
         config = load_config()
         current_version = config.get("version", "unknown")
     except:
         print("Error: Could not load configuration to determine current version\n")
+        remove_lock()
         return
     
     backup_dir = BUNDLES_DIR / current_version
@@ -2402,12 +2539,14 @@ def rollback_version():
     if not backup_dir.exists():
         print(f"\nNo backups found for version {current_version}")
         print("")
+        remove_lock()
         return
     
     backup_files = list(backup_dir.glob("*.zip"))
     if not backup_files:
         print(f"\nNo backup files found for version {current_version}")
         print("")
+        remove_lock()
         return
     
     backup_files.sort(key=os.path.getmtime, reverse=True)
@@ -2427,11 +2566,13 @@ def rollback_version():
         selection = input("\nPlease select one to rollback: ").strip()
         if not selection:
             print("No selection made.\n")
+            remove_lock()
             return
         
         index = int(selection) - 1
         if index < 0 or index >= len(backup_list):
             print("Invalid selection.\n")
+            remove_lock()
             return
         
         selected_file, friendly_name = backup_list[index]
@@ -2450,6 +2591,7 @@ def rollback_version():
             print("Error: Failed to extract backup file or backup is empty\n")
             if temp_dir.exists():
                 shutil.rmtree(temp_dir, ignore_errors=True)
+            remove_lock()
             return
         
         exclude_list = get_exclude_list()
@@ -2488,6 +2630,8 @@ def rollback_version():
         traceback.print_exc()
         if temp_dir.exists():
             shutil.rmtree(temp_dir, ignore_errors=True)
+    finally:
+        remove_lock()
 
 def disable_all_plugins():
     if not PLUGINS_DIR.exists():
@@ -2514,211 +2658,222 @@ def disable_all_plugins():
     return True
 
 def upgrade_server(force=False):
-    print("\n" + "=" * 50)
-    print("               Server Core Upgrade")
-    print("=" * 50)
-    
+    command = ["--upgrade"]
     if force:
-        print("\nForce mode: Showing all available versions regardless of compatibility.\n")
-    
-    try:
-        config = load_config()
-        current_version = config.get("version", "unknown")
-    except:
-        print("Error: Could not determine current server version.")
-        print("Please ensure the server is properly configured.\n")
+        command.append("force")
+    if not create_lock(command):
+        print("\nError: Could not create task lock\n")
         return
     
-    print(f"Current server version: {current_version}")
-    
     try:
-        current_major = '.'.join(current_version.split('.')[:2])
-    except:
-        print("Error: Could not parse current version format.")
-        return
-    
-    backup_choice = input("\nDo you want to create a backup before upgrading? (Y/N): ").strip().upper()
-    if backup_choice == "Y":
-        print("Creating backup...")
-        backup_version()
-    
-    available_versions = []
-    if BUNDLES_DIR.exists():
-        for version_dir in BUNDLES_DIR.iterdir():
-            if version_dir.is_dir():
-                core_zip = version_dir / "core.zip"
-                if core_zip.exists():
-                    version_name = version_dir.name
-                    if force:
-                        available_versions.append(version_name)
-                    else:
-                        try:
-                            version_major = '.'.join(version_name.split('.')[:2])
-                            if (compare_versions(version_name, current_version) >= 0 and 
-                                version_major == current_major):
-                                available_versions.append(version_name)
-                        except:
-                            continue
-    
-    if not available_versions:
-        if force:
-            print(f"\nNo versions found in bundles directory.")
-        else:
-            print(f"\nNo compatible versions found for upgrade.")
-            print(f"Current version: {current_version}")
-            print(f"Looking for versions with major version {current_major} or higher.")
-            print('Use "--upgrade force" to show all available versions.\n')
-        return
-    
-    sorted_versions = sorted(
-        available_versions, 
-        key=lambda v: [int(n) for n in v.split('.')], 
-        reverse=True
-    )
-    
-    if force:
-        print(f"\nAll available versions:")
-    else:
-        print('\nUse "--upgrade force" to show all available versions.')
-        print(f"Available upgrade versions (compatible with {current_major}.x):")
-    
-    print("=" * 30)
-    for i, version in enumerate(sorted_versions, 1):
-        if force:
-            try:
-                version_major = '.'.join(version.split('.')[:2])
-                if version_major != current_major:
-                    status = "! INCOMPATIBLE"
-                elif compare_versions(version, current_version) > 0:
-                    status = "↑ NEWER"
-                elif compare_versions(version, current_version) == 0:
-                    status = "= CURRENT"
-                else:
-                    status = "↓ OLDER"
-            except:
-                status = "? UNKNOWN"
-        else:
-            status = "↑ NEWER" if compare_versions(version, current_version) > 0 else "= CURRENT"
-        
-        print(f"{i}. {version} {status}")
-    print("=" * 30)
-    
-    try:
-        selection = input("\nSelect a version to upgrade to (number): ").strip()
-        if not selection:
-            print("No selection made.\n")
-            return
-        
-        index = int(selection) - 1
-        if index < 0 or index >= len(sorted_versions):
-            print("Invalid selection.")
-            return
-        
-        selected_version = sorted_versions[index]
-        print(f"Selected version: {selected_version}")
+        print("\n" + "=" * 50)
+        print("               Server Core Upgrade")
+        print("=" * 50)
         
         if force:
-            try:
-                selected_major = '.'.join(selected_version.split('.')[:2])
-                if selected_major != current_major:
-                    print(f"\nWARNING: Major version mismatch!")
-                    print(f"Current: {current_version} (major {current_major})")
-                    print(f"Selected: {selected_version} (major {selected_major})")
-                    print("This upgrade may cause world corruption or plugin incompatibility!")
-                    confirm = input("\nAre you sure you want to continue? (Y/N): ").strip().upper()
-                    if confirm != "Y":
-                        print("Upgrade canceled.\n")
-                        return
-                elif compare_versions(selected_version, current_version) < 0:
-                    print(f"\nWARNING: Downgrading from {current_version} to {selected_version}")
-                    print("This may cause data loss or compatibility issues!")
-                    confirm = input("\nAre you sure you want to continue? (Y/N): ").strip().upper()
-                    if confirm != "Y":
-                        print("Upgrade canceled.\n")
-                        return
-            except:
-                pass
-        
-        if selected_version == current_version:
-            print("Selected version is the same as current version.")
-            reinstall = input("Do you want to reinstall the current version? (Y/N): ").strip().upper()
-            if reinstall != "Y":
-                print("Upgrade canceled.\n")
-                return
-        
-        if check_for_updates(selected_version):
-            update_choice = input("\nNewer build available. Download now? (Y/N): ").strip().upper()
-            if update_choice == "Y":
-                download_version(selected_version)
-        
-        show_version_info(selected_version)
-        
-        confirm = input(f"\nAre you sure you want to upgrade from {current_version} to {selected_version}? (Y/N): ").strip().upper()
-        if confirm != "Y":
-            print("Upgrade canceled.\n")
-            return
-        
-        print("\nUpgrading server core...")
-        
-        core_zip_path = BUNDLES_DIR / selected_version / "core.zip"
-        
-        if not core_zip_path.exists():
-            print(f"Error: Core package not found for version {selected_version}")
-            return
-        
-        temp_jar_dir = BASE_DIR / "temp_jar"
-        if temp_jar_dir.exists():
-            shutil.rmtree(temp_jar_dir)
-        temp_jar_dir.mkdir()
+            print("\nForce mode: Showing all available versions regardless of compatibility.\n")
         
         try:
-            with zipfile.ZipFile(core_zip_path, 'r') as zipf:
-                zipf.extractall(temp_jar_dir)
+            config = load_config()
+            current_version = config.get("version", "unknown")
+        except:
+            print("Error: Could not determine current server version.")
+            print("Please ensure the server is properly configured.\n")
+            return
+        
+        print(f"Current server version: {current_version}")
+        
+        try:
+            current_major = '.'.join(current_version.split('.')[:2])
+        except:
+            print("Error: Could not parse current version format.")
+            return
+        
+        backup_choice = input("\nDo you want to create a backup before upgrading? (Y/N): ").strip().upper()
+        if backup_choice == "Y":
+            print("Creating backup...")
+            backup_version()
+        
+        available_versions = []
+        if BUNDLES_DIR.exists():
+            for version_dir in BUNDLES_DIR.iterdir():
+                if version_dir.is_dir():
+                    core_zip = version_dir / "core.zip"
+                    if core_zip.exists():
+                        version_name = version_dir.name
+                        if force:
+                            available_versions.append(version_name)
+                        else:
+                            try:
+                                version_major = '.'.join(version_name.split('.')[:2])
+                                if (compare_versions(version_name, current_version) >= 0 and 
+                                    version_major == current_major):
+                                    available_versions.append(version_name)
+                            except:
+                                continue
+        
+        if not available_versions:
+            if force:
+                print(f"\nNo versions found in bundles directory.")
+            else:
+                print(f"\nNo compatible versions found for upgrade.")
+                print(f"Current version: {current_version}")
+                print(f"Looking for versions with major version {current_major} or higher.")
+                print('Use "--upgrade force" to show all available versions.\n')
+            return
+        
+        sorted_versions = sorted(
+            available_versions, 
+            key=lambda v: [int(n) for n in v.split('.')], 
+            reverse=True
+        )
+        
+        if force:
+            print(f"\nAll available versions:")
+        else:
+            print('\nUse "--upgrade force" to show all available versions.')
+            print(f"Available upgrade versions (compatible with {current_major}.x):")
+        
+        print("=" * 30)
+        for i, version in enumerate(sorted_versions, 1):
+            if force:
+                try:
+                    version_major = '.'.join(version.split('.')[:2])
+                    if version_major != current_major:
+                        status = "! INCOMPATIBLE"
+                    elif compare_versions(version, current_version) > 0:
+                        status = "↑ NEWER"
+                    elif compare_versions(version, current_version) == 0:
+                        status = "= CURRENT"
+                    else:
+                        status = "↓ OLDER"
+                except:
+                    status = "? UNKNOWN"
+            else:
+                status = "↑ NEWER" if compare_versions(version, current_version) > 0 else "= CURRENT"
             
-            core_jar_temp = temp_jar_dir / "core.jar"
-            if not core_jar_temp.exists():
-                print("Error: core.jar not found in the package.")
+            print(f"{i}. {version} {status}")
+        print("=" * 30)
+        
+        try:
+            selection = input("\nSelect a version to upgrade to (number): ").strip()
+            if not selection:
+                print("No selection made.\n")
                 return
             
-            if SERVER_JAR.exists():
-                backup_jar = BASE_DIR / "core.jar.bak"
-                shutil.copy2(SERVER_JAR, backup_jar)
-                print("Backed up current core.jar")
+            index = int(selection) - 1
+            if index < 0 or index >= len(sorted_versions):
+                print("Invalid selection.")
+                return
             
-            shutil.copy2(core_jar_temp, SERVER_JAR)
-            print("\nCore upgraded successfully.")
+            selected_version = sorted_versions[index]
+            print(f"Selected version: {selected_version}")
             
-            config = configparser.ConfigParser()
-            config.read(CONFIG_FILE)
-            if "SERVER" in config:
-                config["SERVER"]["version"] = selected_version
-                with open(CONFIG_FILE, "w") as f:
-                    config.write(f)
-                print(f"Updated configuration to version {selected_version}")
+            if force:
+                try:
+                    selected_major = '.'.join(selected_version.split('.')[:2])
+                    if selected_major != current_major:
+                        print(f"\nWARNING: Major version mismatch!")
+                        print(f"Current: {current_version} (major {current_major})")
+                        print(f"Selected: {selected_version} (major {selected_major})")
+                        print("This upgrade may cause world corruption or plugin incompatibility!")
+                        confirm = input("\nAre you sure you want to continue? (Y/N): ").strip().upper()
+                        if confirm != "Y":
+                            print("Upgrade canceled.\n")
+                            return
+                    elif compare_versions(selected_version, current_version) < 0:
+                        print(f"\nWARNING: Downgrading from {current_version} to {selected_version}")
+                        print("This may cause data loss or compatibility issues!")
+                        confirm = input("\nAre you sure you want to continue? (Y/N): ").strip().upper()
+                        if confirm != "Y":
+                            print("Upgrade canceled.\n")
+                            return
+                except:
+                    pass
             
-        except Exception as e:
-            print(f"Error during core upgrade: {e}")
-            return
-        finally:
+            if selected_version == current_version:
+                print("Selected version is the same as current version.")
+                reinstall = input("Do you want to reinstall the current version? (Y/N): ").strip().upper()
+                if reinstall != "Y":
+                    print("Upgrade canceled.\n")
+                    return
+            
+            if check_for_updates(selected_version):
+                update_choice = input("\nNewer build available. Download now? (Y/N): ").strip().upper()
+                if update_choice == "Y":
+                    download_version(selected_version)
+            
+            show_version_info(selected_version)
+            
+            confirm = input(f"\nAre you sure you want to upgrade from {current_version} to {selected_version}? (Y/N): ").strip().upper()
+            if confirm != "Y":
+                print("Upgrade canceled.\n")
+                return
+            
+            print("\nUpgrading server core...")
+            
+            core_zip_path = BUNDLES_DIR / selected_version / "core.zip"
+            
+            if not core_zip_path.exists():
+                print(f"Error: Core package not found for version {selected_version}")
+                return
+            
+            temp_jar_dir = BASE_DIR / "temp_jar"
             if temp_jar_dir.exists():
                 shutil.rmtree(temp_jar_dir)
-        
-        plugin_choice = input("\nDo you want to disable all plugins for data safety? (Y/N): ").strip().upper()
-        if plugin_choice == "Y":
-            if disable_all_plugins():
-                print("All plugins have been disabled.")
+            temp_jar_dir.mkdir()
+            
+            try:
+                with zipfile.ZipFile(core_zip_path, 'r') as zipf:
+                    zipf.extractall(temp_jar_dir)
+                
+                core_jar_temp = temp_jar_dir / "core.jar"
+                if not core_jar_temp.exists():
+                    print("Error: core.jar not found in the package.")
+                    return
+                
+                if SERVER_JAR.exists():
+                    backup_jar = BASE_DIR / "core.jar.bak"
+                    shutil.copy2(SERVER_JAR, backup_jar)
+                    print("Backed up current core.jar")
+                
+                shutil.copy2(core_jar_temp, SERVER_JAR)
+                print("\nCore upgraded successfully.")
+                
+                config = configparser.ConfigParser()
+                config.read(CONFIG_FILE)
+                if "SERVER" in config:
+                    config["SERVER"]["version"] = selected_version
+                    with open(CONFIG_FILE, "w") as f:
+                        config.write(f)
+                    print(f"Updated configuration to version {selected_version}")
+                
+            except Exception as e:
+                print(f"Error during core upgrade: {e}")
+                return
+            finally:
+                if temp_jar_dir.exists():
+                    shutil.rmtree(temp_jar_dir)
+            
+            plugin_choice = input("\nDo you want to disable all plugins for data safety? (Y/N): ").strip().upper()
+            if plugin_choice == "Y":
+                if disable_all_plugins():
+                    print("All plugins have been disabled.")
+                else:
+                    print("Failed to disable some plugins.")
             else:
-                print("Failed to disable some plugins.")
-        else:
-            print("Plugins left unchanged.")
-        
-        print("\nServer upgrade completed successfully!")
-        print("Please review your plugin compatibility before starting the server.\n")
-        
-    except ValueError:
-        print("Invalid input. Please enter a number.\n")
-    except Exception as e:
-        print(f"Error during upgrade process: {e}\n")
+                print("Plugins left unchanged.")
+            
+            print("\nServer upgrade completed successfully!")
+            print("Please review your plugin compatibility before starting the server.\n")
+            
+        except ValueError:
+            print("Invalid input. Please enter a number.\n")
+        except Exception as e:
+            print(f"Error during upgrade process: {e}\n")
+    
+    finally:
+        remove_lock()
 
 def compare_versions(version1, version2):
     try:
@@ -2909,7 +3064,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 50)
-    print("     Minecraft Server Management Tool (v3.7)")
+    print("     Minecraft Server Management Tool (v3.8)")
     print("=" * 50)
     print("")
     print("A comprehensive command-line tool for managing")
@@ -2943,6 +3098,9 @@ def show_help():
 clear_screen()
 
 def main():
+    pending_command = handle_pending_task()
+    if pending_command:
+        sys.argv = [sys.argv[0]] + pending_command
     
     BUNDLES_DIR.mkdir(parents=True, exist_ok=True)
     
