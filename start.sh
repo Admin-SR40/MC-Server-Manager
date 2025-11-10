@@ -23,7 +23,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "4.1"
+SCRIPT_VERSION = "4.2"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -51,6 +51,23 @@ BASE_EXCLUDE_LIST = [
     "temp_jar",
     "info.txt"
 ]
+
+def is_process_running(pid):
+    try:
+        if platform.system() == "Windows":
+            result = subprocess.run(
+                ["tasklist", "/FI", f"PID eq {pid}"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=5
+            )
+            return str(pid) in result.stdout
+        else:
+            os.kill(pid, 0)
+            return True
+    except (OSError, subprocess.TimeoutExpired, subprocess.SubprocessError):
+        return False
 
 def edit_server_settings():
     if not SERVER_PROPERTIES.exists():
@@ -383,46 +400,90 @@ def check_lock():
             content = f.read()
         
         command_match = re.search(r'Command:\s*(.+)', content)
-        if command_match:
-            command_line = command_match.group(1).strip()
-            return command_line.split()
+        pid_match = re.search(r'PID:\s*(\d+)', content)
         
-        return None
+        if not command_match:
+            return None
+        
+        command_line = command_match.group(1).strip()
+        pid = int(pid_match.group(1)) if pid_match else None
+        
+        is_running = pid and is_process_running(pid)
+        
+        return {
+            'command': command_line.split(),
+            'pid': pid,
+            'is_running': is_running
+        }
+        
     except Exception as e:
         print(f"\nError reading lock file: {e}\n")
         return None
 
 def handle_pending_task():
-    pending_command = check_lock()
-    if not pending_command:
+    lock_info = check_lock()
+    if not lock_info:
         return False
     
     print("\n" + "=" * 51)
-    print("               PENDING TASK DETECTED")
-    print("=" * 51)
-    print(f"\nPrevious command was interrupted:")
-    print(f"  {pending_command}")
-    print("\nThe script was terminated unexpectedly during this operation.")
     
-    while True:
-        print("\nYou have the following options:")
-        print(" Y - Continue with the pending task")
-        print(" N - Clear the pending task")
-        print(" Q - Quit the script without making any changes")
-        print("\nYou should NEVER choose 'Y' if you left the workspace unchecked!\n")
-        choice = input("\nEnter your choice (Y/N/Q): ").strip().upper()
-        if choice == 'Y':
-            print("\nResuming pending task...")
-            return pending_command
-        elif choice == 'N':
-            print("\nClearing pending task...")
-            remove_lock()
-            return False
-        elif choice == 'Q':
-            print("\nExiting script without any changes...")
-            sys.exit(0)
-        else:
-            print("Please enter Y, N, or Q.")
+    if lock_info['is_running']:
+        print("              DUPLICATE INSTANCE DETECTED")
+        print("=" * 51)
+        print(f"\nAnother instance of the script is already running:")
+        print(f"  PID: {lock_info['pid']}")
+        print(f"  Command: {lock_info['command']}")
+        print("\nYou cannot run multiple instances simultaneously.")
+        print("Please wait for the current operation to complete.")
+        
+        while True:
+            print("\nYou have the following options:")
+            print(" Q - Quit this instance")
+            print(" F - Force clear the lock and continue")
+            print("\nForcing may cause data corruption if the other")
+            print("instance is actively modifying server files!\n")
+            
+            choice = input("\nEnter your choice (Q/F): ").strip().upper()
+            if choice == 'Q':
+                print("\nExiting script...")
+                sys.exit(0)
+            elif choice == 'F':
+                confirm = input("\nAre you sure? This may cause DATA CORRUPTION! (Y/N): ").strip().upper()
+                if confirm == 'Y':
+                    print("\nForce clearing lock and continuing...")
+                    remove_lock()
+                    return False
+                else:
+                    continue
+            else:
+                print("Please enter Q or F.")
+    else:
+        print("               PENDING TASK DETECTED")
+        print("=" * 51)
+        print(f"\nPrevious command was interrupted:")
+        print(f"  {lock_info['command']}")
+        print(f"  (PID: {lock_info['pid']})")
+        print("\nThe script was terminated unexpectedly during this operation.")
+        
+        while True:
+            print("\nYou have the following options:")
+            print(" Y - Continue with the pending task")
+            print(" N - Clear the pending task")
+            print(" Q - Quit the script without making any changes")
+            print("\nYou should NEVER choose 'Y' if you left the workspace unchecked!\n")
+            choice = input("\nEnter your choice (Y/N/Q): ").strip().upper()
+            if choice == 'Y':
+                print("\nResuming pending task...")
+                return lock_info['command']
+            elif choice == 'N':
+                print("\nClearing pending task...")
+                remove_lock()
+                return False
+            elif choice == 'Q':
+                print("\nExiting script without any changes...")
+                sys.exit(0)
+            else:
+                print("Please enter Y, N, or Q.")
 
 def check_server_requirements():
     print("Checking server requirements...")
@@ -3374,7 +3435,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 51)
-    print("     Minecraft Server Management Tool (v4.1)")
+    print("     Minecraft Server Management Tool (v4.2)")
     print("=" * 51)
     print("")
     print("A comprehensive command-line tool for managing")
