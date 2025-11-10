@@ -428,7 +428,7 @@ def handle_pending_task():
     print("\n" + "=" * 51)
     
     if lock_info['is_running']:
-        print("              DUPLICATE INSTANCE DETECTED")
+        print("            DUPLICATE INSTANCE DETECTED")
         print("=" * 51)
         print(f"\nAnother instance of the script is already running:")
         print(f"  PID: {lock_info['pid']}")
