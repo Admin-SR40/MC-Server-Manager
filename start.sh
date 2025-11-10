@@ -23,7 +23,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "4.0"
+SCRIPT_VERSION = "4.1"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -1875,8 +1875,8 @@ def init_config_auto(prefill_version=None):
         "version": version,
         "max_ram": str(max_ram),
         "java_path": java_path,
-        "additional_list": "",
-        "additional_parameters": ""
+        "additional_list": " ",
+        "additional_parameters": " "
     }
     
     with open(CONFIG_FILE, "w") as f:
@@ -2125,16 +2125,16 @@ def list_versions():
     for version in sorted(versions, key=lambda v: [int(n) for n in v.split(".")]):
         zip_files = list((BUNDLES_DIR / version).glob("*.zip"))
         if zip_files:
-            status = f" - ({len(zip_files)} backups)"
+            status = f"| ({len(zip_files)} backups)"
         else:
             status = "✗ (no backups)"
-        print(f"- {version} {status}")
+        print(f" - {version} {status}")
     print("=" * 30)
 
     print("\nExclusion List:")
     print("=" * 30)
     for i, item in enumerate(exclude_list, 1):
-        print(f"{i}. {item}")
+        print(f" {i}. {item}")
     print("=" * 30)
     print("")
 
@@ -2530,9 +2530,9 @@ def dump_logs():
                         print(f"Error processing {log_file}: {e}")
                         continue
                 
-                report_content = f"""==============================
+                report_content = f"""===============================
         Log Dump Report
-==============================
+===============================
 
  - Date: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
  - Searched keyword: "{'", "'.join(search_terms)}"
@@ -2614,9 +2614,9 @@ def dump_logs():
                         shutil.copy2(src_path, dest_path)
                         file_count += 1
                 
-                report_content = f"""==============================
+                report_content = f"""===============================
         Log Dump Report
-==============================
+===============================
 
  - Date: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
  - Searched keyword: "Full dump (no keyword search)"
@@ -3373,9 +3373,9 @@ def download_latest_version():
         return False
 
 def show_help():
-    print("=" * 50)
-    print("     Minecraft Server Management Tool (v4.0)")
-    print("=" * 50)
+    print("=" * 51)
+    print("     Minecraft Server Management Tool (v4.1)")
+    print("=" * 51)
     print("")
     print("A comprehensive command-line tool for managing")
     print("Minecraft server versions, backups, plugins and")
