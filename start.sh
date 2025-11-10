@@ -445,12 +445,12 @@ def handle_pending_task():
             
             choice = input("\nEnter your choice (Q/F): ").strip().upper()
             if choice == 'Q':
-                print("\nExiting script...")
+                print("\nExiting script...\n")
                 sys.exit(0)
             elif choice == 'F':
                 confirm = input("\nAre you sure? This may cause DATA CORRUPTION! (Y/N): ").strip().upper()
                 if confirm == 'Y':
-                    print("\nForce clearing lock and continuing...")
+                    print("\nForce clearing lock and continuing...\n")
                     remove_lock()
                     return False
                 else:
@@ -473,17 +473,17 @@ def handle_pending_task():
             print("\nYou should NEVER choose 'Y' if you left the workspace unchecked!\n")
             choice = input("\nEnter your choice (Y/N/Q): ").strip().upper()
             if choice == 'Y':
-                print("\nResuming pending task...")
+                print("\nResuming pending task...\n")
                 return lock_info['command']
             elif choice == 'N':
-                print("\nClearing pending task...")
+                print("\nClearing pending task...\n")
                 remove_lock()
                 return False
             elif choice == 'Q':
-                print("\nExiting script without any changes...")
+                print("\nExiting script without any changes...\n")
                 sys.exit(0)
             else:
-                print("Please enter Y, N, or Q.")
+                print("Please enter Y, N, or Q.\n")
 
 def check_server_requirements():
     print("Checking server requirements...")
