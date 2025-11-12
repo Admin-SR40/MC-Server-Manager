@@ -23,7 +23,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "4.2"
+SCRIPT_VERSION = "4.3"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -370,6 +370,323 @@ def edit_server_settings():
             break
         except Exception as e:
             print(f"\nUnexpected error: {e}\n")
+
+def show_license():
+    print("\n" + "=" * 51)
+    print("                License Information")
+    print("=" * 51)
+    
+    print("\nFetching license...")
+    
+    license_url = "https://raw.githubusercontent.com/Admin-SR40/MC-Server-Manager/refs/heads/main/LICENSE"
+    
+    try:
+        with urllib.request.urlopen(license_url, timeout=10) as response:
+            license_content = response.read().decode('utf-8')
+        
+        print("\nCurrent license:")
+        print("=" * 51)
+        print(license_content)
+        print("=" * 51)
+        print("")
+        
+    except urllib.error.HTTPError as e:
+        print(f"\nError: Could not fetch license - HTTP {e.code}")
+        print("The license file may not be available at the moment.\n")
+    except urllib.error.URLError as e:
+        print(f"\nError: Could not connect to server - {e.reason}")
+        print("Please check your internet connection and try again.\n")
+    except Exception as e:
+        print(f"\nError: Failed to retrieve license - {e}")
+        print("")
+
+def format_uuid(uuid_str):
+    if len(uuid_str) == 32 and '-' not in uuid_str:
+        return f"{uuid_str[:8]}-{uuid_str[8:12]}-{uuid_str[12:16]}-{uuid_str[16:20]}-{uuid_str[20:32]}"
+    return uuid_str
+
+def get_mojang_uuid(username):
+    try:
+        url = f"https://api.mojang.com/users/profiles/minecraft/{username}"
+        with urllib.request.urlopen(url, timeout=10) as response:
+            data = json.loads(response.read().decode())
+            return format_uuid(data.get("id")), data.get("name", username)
+    except Exception as e:
+        return None, username
+
+def is_online_mode():
+    if not SERVER_PROPERTIES.exists():
+        return True
+    
+    try:
+        with open(SERVER_PROPERTIES, 'r', encoding='utf-8') as f:
+            for line in f:
+                if line.strip().startswith('online-mode='):
+                    value = line.split('=', 1)[1].strip().lower()
+                    return value == 'true'
+    except Exception:
+        pass
+    
+    return True
+
+def format_list_table(items, list_type):
+    if list_type == "banned-ips":
+        name_width = 20
+        reason_width = 40
+        
+        table = []
+        table.append("                          - Banned IPs -")
+        table.append("╔" + "═" * name_width + "╦" + "═" * reason_width + "╗")
+        table.append("║" + " IP Address".ljust(name_width-1) + " ║" + " Reason".ljust(reason_width-1) + " ║")
+        table.append("╠" + "═" * name_width + "╬" + "═" * reason_width + "╣")
+        
+        for i, item in enumerate(items, 1):
+            ip = item.get("ip", "Unknown")
+            reason = item.get("reason", "No reason")
+            
+            ip_display = truncate_text(f"{i}. {ip}", name_width-1)
+            reason_display = truncate_text(reason, reason_width-1)
+            
+            row = (f"║ {ip_display.ljust(name_width-1)}"
+                   f"║ {reason_display.ljust(reason_width-1)}║")
+            table.append(row)
+        
+        table.append("╚" + "═" * name_width + "╩" + "═" * reason_width + "╝")
+        
+    else:
+        name_width = 25
+        uuid_width = 38
+        
+        table = []
+        if list_type == "banned-players":
+            table.append("                        - Banned Players -")
+        else:
+            table.append("                          - Whitelist -")
+        
+        table.append("╔" + "═" * name_width + "╦" + "═" * uuid_width + "╗")
+        table.append("║" + " Player Name".ljust(name_width-1) + " ║" + " UUID".ljust(uuid_width-1) + " ║")
+        table.append("╠" + "═" * name_width + "╬" + "═" * uuid_width + "╣")
+        
+        for i, item in enumerate(items, 1):
+            name = item.get("name", "Unknown")
+            uuid = item.get("uuid", "Unknown")
+            
+            name_display = truncate_text(f"{i}. {name}", name_width-1)
+            uuid_display = truncate_text(uuid, uuid_width-1)
+            
+            row = (f"║ {name_display.ljust(name_width-1)}"
+                   f"║ {uuid_display.ljust(uuid_width-1)}║")
+            table.append(row)
+        
+        table.append("╚" + "═" * name_width + "╩" + "═" * uuid_width + "╝")
+    
+    return "\n".join(table)
+
+def manage_player_lists():
+    print("\n" + "=" * 50)
+    print("              Player List Management")
+    print("=" * 50)
+    
+    print("\nSelect list to manage:")
+    print(" 1. Banned Players (banned-players.json)")
+    print(" 2. Banned IPs (banned-ips.json)")
+    print(" 3. Whitelist (whitelist.json)")
+    print("")
+    
+    try:
+        choice = input("Enter your choice (1-3) or press Enter to exit: ").strip()
+        if not choice:
+            print("")
+            return
+        
+        list_choice = int(choice)
+        if list_choice not in [1, 2, 3]:
+            print("Invalid choice.\n")
+            return
+        
+        list_files = {
+            1: "banned-players.json",
+            2: "banned-ips.json", 
+            3: "whitelist.json"
+        }
+        
+        list_names = {
+            1: "banned-players",
+            2: "banned-ips",
+            3: "whitelist"
+        }
+        
+        selected_file = list_files[list_choice]
+        selected_type = list_names[list_choice]
+        file_path = BASE_DIR / selected_file
+        
+        items = []
+        if file_path.exists():
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    items = json.load(f)
+                if not isinstance(items, list):
+                    items = []
+            except Exception as e:
+                print(f"Error reading {selected_file}: {e}")
+                items = []
+        
+        print("\n" + format_list_table(items, selected_type))
+        
+        print("\nAvailable operations:")
+        print("A - Add new entry")
+        print("D - Delete existing entry")
+        print("")
+        
+        op_choice = input("Enter operation (A/D) or press Enter to exit: ").strip().upper()
+        if not op_choice:
+            print("")
+            return
+        
+        if op_choice == 'A':
+            add_to_list(items, selected_type, file_path)
+        elif op_choice == 'D':
+            delete_from_list(items, selected_type, file_path)
+        else:
+            print("Invalid operation.\n")
+            
+    except ValueError:
+        print("Invalid input. Please enter a number.\n")
+    except Exception as e:
+        print(f"Error: {e}\n")
+
+def add_to_list(items, list_type, file_path):
+    print(f"\nAdding to {list_type}...")
+    
+    if list_type == "banned-ips":
+        
+        while True:
+            ip = input("Enter IP address to ban: ").strip()
+            if not ip:
+                print("Operation cancelled.\n")
+                return
+            
+            if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', ip):
+                break
+            else:
+                print("Invalid IP address format. Please try again.")
+        
+        reason = input("Enter ban reason (optional): ").strip() or "Banned by an operator."
+        
+        new_entry = {
+            "ip": ip,
+            "created": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S +0800"),
+            "source": "Server",
+            "expires": "forever",
+            "reason": reason
+        }
+        
+        items.append(new_entry)
+        
+    else:
+        online_mode = is_online_mode()
+        
+        if not online_mode and list_type in ["banned-players", "whitelist"]:
+            print("\nWARNING: Server is in offline mode (online-mode=false).")
+            print("Cannot add players to this list because UUID generation")
+            print("differs between online and offline modes.")
+            print("You can only remove existing entries in offline mode.\n")
+            return
+        
+        while True:
+            username = input("Enter player username: ").strip()
+            if not username:
+                print("Operation cancelled.\n")
+                return
+            
+            if len(username) > 20:
+                print("Username too long (max 20 characters). Please try again.")
+                continue
+            
+            print(f"Fetching UUID for {username}...")
+            uuid, actual_name = get_mojang_uuid(username)
+            
+            if not uuid:
+                print(f"Error: Could not fetch UUID for '{username}'.")
+                print("Please check the username and try again.")
+                continue
+            
+            print(f"Found: {actual_name} -> {uuid}")
+            break
+        
+        if list_type == "banned-players":
+            reason = input("Enter ban reason (optional): ").strip() or "Banned by an operator."
+            
+            new_entry = {
+                "uuid": uuid,
+                "name": actual_name,
+                "created": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S +0800"),
+                "source": "Server",
+                "expires": "forever",
+                "reason": reason
+            }
+        else:
+            new_entry = {
+                "uuid": uuid,
+                "name": actual_name
+            }
+        
+        items.append(new_entry)
+    
+    try:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(items, f, indent=2, ensure_ascii=False)
+        print(f"\nSuccessfully added to {list_type}!\n")
+    except Exception as e:
+        print(f"Error saving {list_type}: {e}\n")
+
+def delete_from_list(items, list_type, file_path):
+    if not items:
+        print(f"\n{list_type} is empty. Nothing to delete.\n")
+        return
+    
+    print(f"\nDeleting from {list_type}...")
+    
+    try:
+        selection = input("Enter the number(s) to delete (space-separated): ").strip()
+        if not selection:
+            print("Operation cancelled.\n")
+            return
+        
+        indices = [int(i.strip()) for i in selection.split()]
+        indices.sort(reverse=True)
+        
+        valid_indices = [i for i in indices if 1 <= i <= len(items)]
+        
+        if not valid_indices:
+            print("No valid numbers selected.\n")
+            return
+        
+        print("\nThe following entries will be deleted:")
+        for idx in valid_indices:
+            item = items[idx-1]
+            if list_type == "banned-ips":
+                print(f" - IP: {item.get('ip', 'Unknown')}")
+            else:
+                print(f" - {item.get('name', 'Unknown')} ({item.get('uuid', 'Unknown')})")
+        
+        confirm = input("\nAre you sure? (Y/N): ").strip().upper()
+        if confirm != 'Y':
+            print("Deletion cancelled.\n")
+            return
+        
+        for idx in valid_indices:
+            del items[idx-1]
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(items, f, indent=2, ensure_ascii=False)
+        
+        print(f"\nSuccessfully deleted {len(valid_indices)} entries from {list_type}!\n")
+        
+    except ValueError:
+        print("Invalid input. Please enter numbers separated by spaces.\n")
+    except Exception as e:
+        print(f"Error deleting from {list_type}: {e}\n")
 
 def create_lock(command):
     try:
@@ -3435,7 +3752,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 51)
-    print("     Minecraft Server Management Tool (v4.2)")
+    print("     Minecraft Server Management Tool (v4.3)")
     print("=" * 51)
     print("")
     print("A comprehensive command-line tool for managing")
@@ -3463,7 +3780,9 @@ def show_help():
     print("  --cleanup         Clean up server files to free up space")
     print("  --dump            Create a compressed dump of log files")
     print("  --settings        Edit server properties and settings")
+    print("  --players         Manage banned players, IPs, and whitelist")
     print("  --version         Check for script updates and update if available")
+    print("  --license         Show the open source license for this tool")
     print("  --help            Show this help message")
     print("")
 
@@ -3524,6 +3843,10 @@ def main():
             check_self_update(force=False)
     elif sys.argv[1] == "--settings":
         edit_server_settings()
+    elif sys.argv[1] == "--license":
+        show_license()
+    elif sys.argv[1] == "--players":
+        manage_player_lists()
     elif sys.argv[1] == "--help":
         show_help()
     else:
