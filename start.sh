@@ -23,7 +23,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "4.3"
+SCRIPT_VERSION = "4.4"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -430,6 +430,14 @@ def is_online_mode():
     return True
 
 def format_list_table(items, list_type):
+    if not items:
+        if list_type == "banned-ips":
+            return "                          - Banned IPs -\n\n                       No banned IPs found."
+        elif list_type == "banned-players":
+            return "                        - Banned Players -\n\n                     No banned players found."
+        else:
+            return "                          - Whitelist -\n\n                  No whitelisted players found."
+    
     if list_type == "banned-ips":
         name_width = 20
         reason_width = 40
@@ -535,7 +543,8 @@ def manage_player_lists():
         
         print("\nAvailable operations:")
         print("A - Add new entry")
-        print("D - Delete existing entry")
+        if items:
+            print("D - Delete existing entry")
         print("")
         
         op_choice = input("Enter operation (A/D) or press Enter to exit: ").strip().upper()
@@ -546,7 +555,10 @@ def manage_player_lists():
         if op_choice == 'A':
             add_to_list(items, selected_type, file_path)
         elif op_choice == 'D':
-            delete_from_list(items, selected_type, file_path)
+            if items:
+                delete_from_list(items, selected_type, file_path)
+            else:
+                print("No entries to delete.\n")
         else:
             print("Invalid operation.\n")
             
@@ -554,6 +566,54 @@ def manage_player_lists():
         print("Invalid input. Please enter a number.\n")
     except Exception as e:
         print(f"Error: {e}\n")
+
+def delete_from_list(items, list_type, file_path):
+    if not items:
+        print(f"\n{list_type} is empty. Nothing to delete.\n")
+        return
+    
+    print(f"\nDeleting from {list_type}...")
+    
+    try:
+        selection = input("Enter the number(s) to delete (space-separated): ").strip()
+        if not selection:
+            print("Operation cancelled.\n")
+            return
+        
+        indices = [int(i.strip()) for i in selection.split()]
+        indices.sort(reverse=True)
+        
+        valid_indices = [i for i in indices if 1 <= i <= len(items)]
+        
+        if not valid_indices:
+            print("No valid numbers selected.\n")
+            return
+        
+        print("\nThe following entries will be deleted:")
+        for idx in valid_indices:
+            item = items[idx-1]
+            if list_type == "banned-ips":
+                print(f" - IP: {item.get('ip', 'Unknown')}")
+            else:
+                print(f" - {item.get('name', 'Unknown')} ({item.get('uuid', 'Unknown')})")
+        
+        confirm = input("\nAre you sure? (Y/N): ").strip().upper()
+        if confirm != 'Y':
+            print("Deletion cancelled.\n")
+            return
+        
+        for idx in valid_indices:
+            del items[idx-1]
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(items, f, indent=2, ensure_ascii=False)
+        
+        print(f"\nSuccessfully deleted {len(valid_indices)} entries from {list_type}!\n")
+        
+    except ValueError:
+        print("Invalid input. Please enter numbers separated by spaces.\n")
+    except Exception as e:
+        print(f"Error deleting from {list_type}: {e}\n")
 
 def add_to_list(items, list_type, file_path):
     print(f"\nAdding to {list_type}...")
@@ -590,7 +650,8 @@ def add_to_list(items, list_type, file_path):
             print("\nWARNING: Server is in offline mode (online-mode=false).")
             print("Cannot add players to this list because UUID generation")
             print("differs between online and offline modes.")
-            print("You can only remove existing entries in offline mode.\n")
+            print("You can only remove existing entries in offline mode.")
+            print("You can use in-game commands to add players instead.\n")
             return
         
         while True:
@@ -1445,8 +1506,11 @@ def download_version(version=None):
                     
                     print("\nAvailable Versions:")
                     print("=" * 50)
-                    for major, minors in sorted(version_groups.items(), reverse=True):
-                        print(f"[{major}]: {', '.join(sorted(minors, reverse=True))}")
+                    
+                    for major, minors in sorted(version_groups.items(), key=lambda x: tuple(map(int, x[0].split('.'))), reverse=True):
+                        sorted_minors = sorted(minors, key=lambda v: tuple(map(int, v.split('.'))), reverse=True)
+                        print(f"[{major}]: {', '.join(sorted_minors)}")
+                    
                     print("=" * 50)
                     print("")
                     
@@ -1454,6 +1518,11 @@ def download_version(version=None):
                 print(f"Error fetching available versions: {e}\n")
                 return
         else:
+            if not re.match(r"^\d+\.\d+(\.\d+)?$", version):
+                print(f"Invalid version format: {version}")
+                print("Use format like 1.21.5 or 1.21")
+                return
+                
             target_dir = BUNDLES_DIR / version
             zip_path = target_dir / "core.zip"
             
@@ -2065,17 +2134,32 @@ def init_config(prefill_version=None):
         print(f"\nUsing version: {version}")
     else:
         while True:
-            version = input("\nEnter Minecraft server version (e.g., 1.21.5): ").strip()
-            if re.match(r"^\d+\.\d+\.\d+$", version):
+            version = input("\nEnter Minecraft server version (e.g., 1.21.5 or 1.21): ").strip()
+            if re.match(r"^\d+\.\d+(\.\d+)?$", version):
                 break
-            print("Invalid version format. Use format like 1.21.5")
+            print("Invalid version format. Use format like 1.21.5 or 1.21")
     
     while True:
-        max_ram = input("\nSet maximum RAM in GB (e.g., 4): ").strip()
-        if max_ram.isdigit() and int(max_ram) > 0:
-            max_ram = int(max_ram)
-            break
-        print("Invalid RAM size. Must be integer greater than 0")
+        ram_input = input("\nSet maximum RAM (e.g., 4096 for 4GB, or 4 for 4GB): ").strip()
+        if ram_input.isdigit():
+            ram_value = int(ram_input)
+            if ram_value < 256:
+                max_ram = ram_value * 1024
+                print(f"Converted {ram_value} GB to {max_ram} MB")
+            else:
+                max_ram = ram_value
+            
+            if max_ram < 512:
+                print("Warning: Allocating less than 512MB may cause server instability!")
+                confirm = input("Continue anyway? (Y/N): ").strip().upper()
+                if confirm == "Y":
+                    break
+            else:
+                break
+        else:
+            print("Invalid RAM size. Must be a positive integer")
+    
+    print(f"\nAllocated RAM: {max_ram} MB ({max_ram/1024:.1f} GB)")
     
     print("\nYou can add additional files/directories to exclude from backups.")
     print("These will be added to the base exclusion list.")
@@ -2234,24 +2318,34 @@ def init_config_auto(prefill_version=None):
             memoryStatus = MEMORYSTATUSEX()
             memoryStatus.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
             ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(memoryStatus))
-            total_mem = memoryStatus.ullTotalPhys / (1024 ** 3)
+            total_mem_gb = memoryStatus.ullTotalPhys / (1024 ** 3)
         else:
-            total_mem = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') / (1024 ** 3)
+            total_mem_gb = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') / (1024 ** 3)
     except Exception:
-        total_mem = 4.0
+        total_mem_gb = 4.0
 
-    if total_mem < 2:
-        max_ram = int(total_mem)
-    elif 2 <= total_mem <= 4:
-        max_ram = 2
+    total_mem_mb = total_mem_gb * 1024
+    
+    print(f"\nTotal system memory: {total_mem_mb:.0f} MB ({total_mem_gb:.1f} GB)")
+
+    if total_mem_mb < 512:
+        print("\nERROR: Total system memory is less than 512MB.")
+        print("The server will likely crash due to insufficient memory.")
+        print("Please use manual initialization (--init) to allocate memory carefully.")
+        return
+    elif 512 <= total_mem_mb <= 1360:
+        max_ram_mb = int(total_mem_mb * 0.75)
+        print(f"Allocating 75% of total memory: {max_ram_mb} MB")
+    elif 1361 <= total_mem_mb <= 2048:
+        max_ram_mb = 1024
+        print(f"Fixed allocation: {max_ram_mb} MB (1GB)")
     else:
-        max_ram = int(total_mem / 2)
-
-    print(f"\nAuto-selected RAM: {max_ram} GB (Total: {total_mem:.1f} GB)")
+        max_ram_mb = min(int(total_mem_mb * 0.5), 8192)
+        print(f"Allocating 50% of total memory (max 8GB): {max_ram_mb} MB")
 
     config["SERVER"] = {
         "version": version,
-        "max_ram": str(max_ram),
+        "max_ram": str(max_ram_mb),
         "java_path": java_path,
         "additional_list": " ",
         "additional_parameters": " "
@@ -2469,15 +2563,21 @@ def show_info():
     try:
         config = load_config()
         version = config.get("version", "Unknown")
-        max_ram = config.get("max_ram", "Unknown")
+        max_ram_mb = config.get("max_ram", "Unknown")
         java_path = config.get("java_path", "Not set")
         additional_list = config.get("additional_list", "None")
         additional_params = config.get("additional_parameters", "None")
         
+        if max_ram_mb != "Unknown":
+            max_ram_gb = int(max_ram_mb) / 1024
+            ram_display = f"{max_ram_mb} MB ({max_ram_gb:.1f} GB)"
+        else:
+            ram_display = "Unknown"
+        
         print("\nServer Configuration:")
         print("=" * 50)
         print(f"Minecraft Version: {version}")
-        print(f"Max RAM: {max_ram} GB")
+        print(f"Max RAM: {ram_display}")
         print(f"Java Path: {java_path}")
         print(f"Additional Exclusions: {additional_list}")
         print(f"Additional Parameters: {additional_params}")
@@ -3132,7 +3232,7 @@ def start_server():
     (BASE_DIR / "config").mkdir(exist_ok=True)
     
     java_path = config["java_path"]
-    max_ram = config["max_ram"]
+    max_ram_mb = config["max_ram"]
     additional_params = config.get("additional_parameters", "")
     
     if not Path(java_path).exists():
@@ -3145,7 +3245,7 @@ def start_server():
     
     command = [
         java_path,
-        f"-Xmx{max_ram}G",
+        f"-Xmx{max_ram_mb}M",
         "--add-modules=jdk.incubator.vector",
         "-jar", str(SERVER_JAR),
         "--commands-settings", str(BASE_DIR / "config" / "commands.yml"),
@@ -3752,7 +3852,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 51)
-    print("     Minecraft Server Management Tool (v4.3)")
+    print("     Minecraft Server Management Tool (v4.4)")
     print("=" * 51)
     print("")
     print("A comprehensive command-line tool for managing")
