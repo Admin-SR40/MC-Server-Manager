@@ -23,7 +23,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "4.4"
+SCRIPT_VERSION = "4.5"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -2298,6 +2298,7 @@ def init_config_auto(prefill_version=None):
             print("Exiting auto initialization.")
             return
 
+    # 获取系统总内存
     try:
         if platform.system() == "Windows":
             import ctypes
@@ -2333,19 +2334,78 @@ def init_config_auto(prefill_version=None):
         print("The server will likely crash due to insufficient memory.")
         print("Please use manual initialization (--init) to allocate memory carefully.")
         return
-    elif 512 <= total_mem_mb <= 1360:
-        max_ram_mb = int(total_mem_mb * 0.75)
-        print(f"Allocating 75% of total memory: {max_ram_mb} MB")
+    
+    if 512 <= total_mem_mb <= 1360:
+        base_ram_mb = int(total_mem_mb * 0.75)
+        print(f"Base allocation (75% of total): {base_ram_mb} MB")
     elif 1361 <= total_mem_mb <= 2048:
-        max_ram_mb = 1024
-        print(f"Fixed allocation: {max_ram_mb} MB (1GB)")
+        base_ram_mb = 1024
+        print(f"Base allocation (fixed): {base_ram_mb} MB (1GB)")
     else:
-        max_ram_mb = min(int(total_mem_mb * 0.5), 8192)
-        print(f"Allocating 50% of total memory (max 8GB): {max_ram_mb} MB")
+        base_ram_mb = int(total_mem_mb * 0.5)
+        print(f"Base allocation (50% of total): {base_ram_mb} MB")
+
+    plugins_ram_mb = 0
+    plugins_dir = BASE_DIR / "plugins"
+    if plugins_dir.exists():
+        enabled_plugins = list(plugins_dir.glob("*.jar"))
+        disabled_plugins = list(plugins_dir.glob("*.jar.disabled"))
+        total_plugins = len(enabled_plugins) + len(disabled_plugins)
+        enabled_count = len(enabled_plugins)
+        
+        plugins_ram_mb = enabled_count * 50
+        print(f"Plugins allocation ({enabled_count} enabled plugins): {plugins_ram_mb} MB")
+
+    max_players = 20
+    view_distance = 10
+    
+    if SERVER_PROPERTIES.exists():
+        try:
+            with open(SERVER_PROPERTIES, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('max-players='):
+                        try:
+                            max_players = int(line.split('=')[1])
+                        except ValueError:
+                            pass
+                    elif line.startswith('view-distance='):
+                        try:
+                            view_distance = int(line.split('=')[1])
+                        except ValueError:
+                            pass
+        except Exception:
+            pass
+    
+    estimated_online_players = max(1, int(max_players * 0.1))
+    players_ram_mb = estimated_online_players * (75 + view_distance * 5)
+    print(f"Players allocation ({estimated_online_players} estimated online): {players_ram_mb} MB")
+
+    total_allocated_mb = base_ram_mb + plugins_ram_mb + players_ram_mb
+    
+    print(f"\nMemory allocation breakdown:")
+    print(f"  Base: {base_ram_mb} MB")
+    print(f"  Plugins: {plugins_ram_mb} MB")
+    print(f"  Players: {players_ram_mb} MB")
+    print(f"  Total: {total_allocated_mb} MB")
+
+    max_recommended_mb = min(8192, int(total_mem_mb * 0.8))
+    
+    if total_allocated_mb > max_recommended_mb:
+        print(f"\nTotal allocation exceeds recommended maximum ({max_recommended_mb} MB)")
+        print(f"Adjusting to maximum recommended value: {max_recommended_mb} MB")
+        total_allocated_mb = max_recommended_mb
+    elif total_allocated_mb > total_mem_mb:
+        print(f"\nTotal allocation exceeds system memory ({total_mem_mb} MB)")
+        print(f"Adjusting to system maximum: {total_mem_mb} MB")
+        total_allocated_mb = total_mem_mb
+
+    final_ram_mb = int(total_allocated_mb)
+    print(f"\nFinal allocated RAM: {final_ram_mb} MB ({final_ram_mb/1024:.1f} GB)")
 
     config["SERVER"] = {
         "version": version,
-        "max_ram": str(max_ram_mb),
+        "max_ram": str(final_ram_mb),
         "java_path": java_path,
         "additional_list": " ",
         "additional_parameters": " "
@@ -3852,7 +3912,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 51)
-    print("     Minecraft Server Management Tool (v4.4)")
+    print("     Minecraft Server Management Tool (v4.5)")
     print("=" * 51)
     print("")
     print("A comprehensive command-line tool for managing")
