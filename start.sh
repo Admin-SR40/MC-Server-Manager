@@ -23,7 +23,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "4.5"
+SCRIPT_VERSION = "4.6"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -542,9 +542,9 @@ def manage_player_lists():
         print("\n" + format_list_table(items, selected_type))
         
         print("\nAvailable operations:")
-        print("A - Add new entry")
+        print(" A - Add new entry")
         if items:
-            print("D - Delete existing entry")
+            print(" D - Delete existing entry")
         print("")
         
         op_choice = input("Enter operation (A/D) or press Enter to exit: ").strip().upper()
@@ -2298,7 +2298,6 @@ def init_config_auto(prefill_version=None):
             print("Exiting auto initialization.")
             return
 
-    # 获取系统总内存
     try:
         if platform.system() == "Windows":
             import ctypes
@@ -2335,15 +2334,13 @@ def init_config_auto(prefill_version=None):
         print("Please use manual initialization (--init) to allocate memory carefully.")
         return
     
-    if 512 <= total_mem_mb <= 1360:
-        base_ram_mb = int(total_mem_mb * 0.75)
-        print(f"Base allocation (75% of total): {base_ram_mb} MB")
-    elif 1361 <= total_mem_mb <= 2048:
-        base_ram_mb = 1024
-        print(f"Base allocation (fixed): {base_ram_mb} MB (1GB)")
+    if total_mem_mb <= 4096:
+        base_ram_mb = (13 * total_mem_mb + 4096) / 28
+        base_ram_mb = round(base_ram_mb)
+        print(f"Base allocation: {base_ram_mb} MB")
     else:
-        base_ram_mb = int(total_mem_mb * 0.5)
-        print(f"Base allocation (50% of total): {base_ram_mb} MB")
+        base_ram_mb = 2048
+        print(f"Base allocation: {base_ram_mb} MB (2GB)")
 
     plugins_ram_mb = 0
     plugins_dir = BASE_DIR / "plugins"
@@ -2353,8 +2350,8 @@ def init_config_auto(prefill_version=None):
         total_plugins = len(enabled_plugins) + len(disabled_plugins)
         enabled_count = len(enabled_plugins)
         
-        plugins_ram_mb = enabled_count * 50
-        print(f"Plugins allocation ({enabled_count} enabled plugins): {plugins_ram_mb} MB")
+        plugins_ram_mb = enabled_count * 60
+        print(f"Plugins allocation: {plugins_ram_mb} MB")
 
     max_players = 20
     view_distance = 10
@@ -2377,25 +2374,28 @@ def init_config_auto(prefill_version=None):
         except Exception:
             pass
     
-    estimated_online_players = max(1, int(max_players * 0.1))
-    players_ram_mb = estimated_online_players * (75 + view_distance * 5)
-    print(f"Players allocation ({estimated_online_players} estimated online): {players_ram_mb} MB")
+    if 2 <= view_distance <= 4:
+        view_allocation = 2
+    elif 5 <= view_distance <= 8:
+        view_allocation = 5
+    elif 9 <= view_distance <= 12:
+        view_allocation = 8
+    else:
+        view_allocation = 10
+    
+    estimated_online_players = round(max_players * 0.2)
+    players_ram_mb = estimated_online_players * (75 + view_allocation)
+    print(f"Players allocation: {players_ram_mb} MB")
 
     total_allocated_mb = base_ram_mb + plugins_ram_mb + players_ram_mb
     
     print(f"\nMemory allocation breakdown:")
-    print(f"  Base: {base_ram_mb} MB")
-    print(f"  Plugins: {plugins_ram_mb} MB")
-    print(f"  Players: {players_ram_mb} MB")
-    print(f"  Total: {total_allocated_mb} MB")
+    print(f" Base: {base_ram_mb} MB")
+    print(f" Plugins: {plugins_ram_mb} MB")
+    print(f" Players: {players_ram_mb} MB")
+    print(f" Total: {total_allocated_mb} MB")
 
-    max_recommended_mb = min(8192, int(total_mem_mb * 0.8))
-    
-    if total_allocated_mb > max_recommended_mb:
-        print(f"\nTotal allocation exceeds recommended maximum ({max_recommended_mb} MB)")
-        print(f"Adjusting to maximum recommended value: {max_recommended_mb} MB")
-        total_allocated_mb = max_recommended_mb
-    elif total_allocated_mb > total_mem_mb:
+    if total_allocated_mb > total_mem_mb:
         print(f"\nTotal allocation exceeds system memory ({total_mem_mb} MB)")
         print(f"Adjusting to system maximum: {total_mem_mb} MB")
         total_allocated_mb = total_mem_mb
@@ -3912,7 +3912,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 51)
-    print("     Minecraft Server Management Tool (v4.5)")
+    print("     Minecraft Server Management Tool (v4.6)")
     print("=" * 51)
     print("")
     print("A comprehensive command-line tool for managing")
