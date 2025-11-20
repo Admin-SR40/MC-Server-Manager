@@ -23,7 +23,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "4.6"
+SCRIPT_VERSION = "4.7"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -2054,6 +2054,191 @@ def clear_screen():
     else:
         os.system("clear")
 
+def get_total_memory():
+    try:
+        if is_running_in_container():
+            container_mem = get_container_memory_limit()
+            if container_mem:
+                container_mem_gb = container_mem / (1024**3)
+                print(f" - Using container memory limit: {container_mem_gb:.1f} GB")
+                return container_mem
+        
+        if platform.system() == "Windows":
+            import ctypes
+            class MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+            
+            memoryStatus = MEMORYSTATUSEX()
+            memoryStatus.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(memoryStatus)):
+                return memoryStatus.ullTotalPhys
+            else:
+                return 4 * 1024 * 1024 * 1024
+        else:
+            try:
+                if os.path.exists("/proc/meminfo"):
+                    with open("/proc/meminfo", 'r') as f:
+                        for line in f:
+                            if line.startswith("MemTotal:"):
+                                parts = line.split()
+                                if len(parts) >= 3:
+                                    mem_kb = int(parts[1])
+                                    return mem_kb * 1024
+                
+                return os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
+            except (OSError, ValueError):
+                return 4 * 1024 * 1024 * 1024
+                
+    except Exception as e:
+        print(f" - Warning: Could not determine total memory: {e}")
+        return 4 * 1024 * 1024 * 1024
+
+def is_running_in_container():
+    if os.path.exists('/.dockerenv'):
+        return True
+    
+    try:
+        if os.path.exists('/proc/1/cgroup'):
+            with open('/proc/1/cgroup', 'r') as f:
+                content = f.read()
+                if 'docker' in content or 'kubepods' in content:
+                    return True
+    except:
+        pass
+    
+    container_env_vars = ['KUBERNETES_SERVICE_HOST', 'CONTAINER_ID', 'DOCKER_CONTAINER']
+    return any(var in os.environ for var in container_env_vars)
+
+def get_container_memory_limit():
+    cgroup_v2_path = "/sys/fs/cgroup/memory.max"
+    if os.path.exists(cgroup_v2_path):
+        try:
+            with open(cgroup_v2_path, 'r') as f:
+                limit = f.read().strip()
+                if limit.isdigit():
+                    limit = int(limit)
+                    if limit > 0 and limit < 2**63:
+                        return limit
+        except:
+            pass
+    
+    cgroup_v1_path = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+    if os.path.exists(cgroup_v1_path):
+        try:
+            with open(cgroup_v1_path, 'r') as f:
+                limit = int(f.read().strip())
+                if limit > 0 and limit < 2**63:
+                    return limit
+        except:
+            pass
+    
+    env_vars = ['DOCKER_MEMORY_LIMIT', 'CONTAINER_MEMORY_LIMIT', 'MEMORY_LIMIT']
+    for env_var in env_vars:
+        if env_var in os.environ:
+            try:
+                limit_str = os.environ[env_var].upper()
+                if limit_str.endswith('G'):
+                    return int(limit_str[:-1]) * 1024 * 1024 * 1024
+                elif limit_str.endswith('M'):
+                    return int(limit_str[:-1]) * 1024 * 1024
+                else:
+                    return int(limit_str) * 1024 * 1024
+            except:
+                continue
+    
+    return None
+
+def calculate_plugins_memory(enabled_plugins):
+    total_plugin_memory = 0
+    
+    for plugin_path in enabled_plugins:
+        try:
+            plugin_size_mb = plugin_path.stat().st_size / (1024 * 1024)
+            
+            if plugin_size_mb < 0.5:
+                memory = 10
+            elif plugin_size_mb < 2:
+                memory = 20
+            elif plugin_size_mb < 5:
+                memory = 35
+            elif plugin_size_mb < 10:
+                memory = 50
+            elif plugin_size_mb < 20:
+                memory = 75
+            else:
+                memory = 100
+            
+            plugin_name = plugin_path.stem.lower()
+            if any(keyword in plugin_name for keyword in ['world', 'map', 'terrain', 'generate']):
+                memory = int(memory * 1.5)
+            elif any(keyword in plugin_name for keyword in ['economy', 'shop', 'market', 'vault']):
+                memory = int(memory * 0.8)
+            
+            total_plugin_memory += memory
+            
+        except Exception as e:
+            print(f" Error analyzing {plugin_path.name}: {e}")
+            total_plugin_memory += 30
+    
+    return total_plugin_memory
+
+def calculate_players_memory(max_players, view_distance):
+    visible_chunks = view_distance * view_distance
+    
+    chunks_per_player_mb = visible_chunks * 0.25
+    base_memory_per_player = 50
+    total_memory_per_player = base_memory_per_player + chunks_per_player_mb
+    
+    if view_distance <= 6:
+        memory_multiplier = 0.8
+    elif view_distance <= 10:
+        memory_multiplier = 1.0
+    elif view_distance <= 16:
+        memory_multiplier = 1.3
+    else:
+        memory_multiplier = 1.6
+    
+    estimated_online_players = max(1, round(max_players * 0.2))
+    
+    players_memory = estimated_online_players * total_memory_per_player * memory_multiplier
+    
+    details = {
+        'estimated_players': estimated_online_players,
+        'view_distance': view_distance,
+        'memory_multiplier': memory_multiplier
+    }
+    
+    return players_memory, details
+
+def validate_memory_allocation(total_mem_mb, allocated_mb, is_container=False):
+    if is_container:
+        max_allowed = total_mem_mb * 0.85
+    else:
+        max_allowed = total_mem_mb * 0.9
+    
+    if allocated_mb > max_allowed:
+        print(f"Warning: Allocated memory {allocated_mb}MB exceeds recommended limit {max_allowed}MB")
+        
+        if is_container:
+            safe_allocation = min(allocated_mb, total_mem_mb * 0.7)
+            print(f"Container environment adjusted to: {safe_allocation}MB")
+            return safe_allocation
+        else:
+            print(f"Adjusted to limit: {max_allowed}MB")
+            return max_allowed
+    
+    return allocated_mb
+
 def validate_java_path(java_path):
     path = Path(java_path)
 
@@ -2298,49 +2483,30 @@ def init_config_auto(prefill_version=None):
             print("Exiting auto initialization.")
             return
 
-    try:
-        if platform.system() == "Windows":
-            import ctypes
-
-            class MEMORYSTATUSEX(ctypes.Structure):
-                _fields_ = [
-                    ("dwLength", ctypes.c_ulong),
-                    ("dwMemoryLoad", ctypes.c_ulong),
-                    ("ullTotalPhys", ctypes.c_ulonglong),
-                    ("ullAvailPhys", ctypes.c_ulonglong),
-                    ("ullTotalPageFile", ctypes.c_ulonglong),
-                    ("ullAvailPageFile", ctypes.c_ulonglong),
-                    ("ullTotalVirtual", ctypes.c_ulonglong),
-                    ("ullAvailVirtual", ctypes.c_ulonglong),
-                    ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
-                ]
-
-            memoryStatus = MEMORYSTATUSEX()
-            memoryStatus.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
-            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(memoryStatus))
-            total_mem_gb = memoryStatus.ullTotalPhys / (1024 ** 3)
-        else:
-            total_mem_gb = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES') / (1024 ** 3)
-    except Exception:
-        total_mem_gb = 4.0
-
+    print("\nDetecting available memory...")
+    total_mem_bytes = get_total_memory()
+    total_mem_gb = total_mem_bytes / (1024 ** 3)
     total_mem_mb = total_mem_gb * 1024
     
-    print(f"\nTotal system memory: {total_mem_mb:.0f} MB ({total_mem_gb:.1f} GB)")
+    is_container = is_running_in_container()
+    if is_container:
+        print(" - Running in container environment")
+    
+    print(f"Total available memory: {total_mem_mb:.0f} MB ({total_mem_gb:.1f} GB)")
 
     if total_mem_mb < 512:
-        print("\nERROR: Total system memory is less than 512MB.")
+        print("\nERROR: Available memory is less than 512MB.")
         print("The server will likely crash due to insufficient memory.")
         print("Please use manual initialization (--init) to allocate memory carefully.")
         return
     
-    if total_mem_mb <= 4096:
+    if total_mem_mb <= 8192:
         base_ram_mb = (13 * total_mem_mb + 4096) / 28
         base_ram_mb = round(base_ram_mb)
-        print(f"Base allocation: {base_ram_mb} MB")
     else:
-        base_ram_mb = 2048
-        print(f"Base allocation: {base_ram_mb} MB (2GB)")
+        base_ram_mb = 4096
+    
+    print(f"Base allocation: {base_ram_mb} MB")
 
     plugins_ram_mb = 0
     plugins_dir = BASE_DIR / "plugins"
@@ -2350,8 +2516,11 @@ def init_config_auto(prefill_version=None):
         total_plugins = len(enabled_plugins) + len(disabled_plugins)
         enabled_count = len(enabled_plugins)
         
-        plugins_ram_mb = enabled_count * 60
-        print(f"Plugins allocation: {plugins_ram_mb} MB")
+        print(f"\nAnalyzing {enabled_count} enabled plugins:")
+        
+        plugins_ram_mb = calculate_plugins_memory(enabled_plugins)
+        
+        print(f"Total plugins allocation: {plugins_ram_mb} MB")
 
     max_players = 20
     view_distance = 10
@@ -2374,31 +2543,25 @@ def init_config_auto(prefill_version=None):
         except Exception:
             pass
     
-    if 2 <= view_distance <= 4:
-        view_allocation = 2
-    elif 5 <= view_distance <= 8:
-        view_allocation = 5
-    elif 9 <= view_distance <= 12:
-        view_allocation = 8
-    else:
-        view_allocation = 10
+    players_ram_mb, player_details = calculate_players_memory(max_players, view_distance)
     
-    estimated_online_players = round(max_players * 0.2)
-    players_ram_mb = estimated_online_players * (75 + view_allocation)
-    print(f"Players allocation: {players_ram_mb} MB")
+    print(f"\nPlayer allocation details:")
+    print(f"  Estimated players: {player_details['estimated_players']}")
+    print(f"  View distance: {player_details['view_distance']}")
+    print(f"  Multiplier: {player_details['memory_multiplier']}")
+    print(f"  Total allocation: {players_ram_mb:.1f} MB")
 
     total_allocated_mb = base_ram_mb + plugins_ram_mb + players_ram_mb
     
     print(f"\nMemory allocation breakdown:")
     print(f" Base: {base_ram_mb} MB")
     print(f" Plugins: {plugins_ram_mb} MB")
-    print(f" Players: {players_ram_mb} MB")
-    print(f" Total: {total_allocated_mb} MB")
+    print(f" Players: {players_ram_mb:.1f} MB")
+    print(f" Total: {total_allocated_mb:.1f} MB")
 
-    if total_allocated_mb > total_mem_mb:
-        print(f"\nTotal allocation exceeds system memory ({total_mem_mb} MB)")
-        print(f"Adjusting to system maximum: {total_mem_mb} MB")
-        total_allocated_mb = total_mem_mb
+    total_allocated_mb = validate_memory_allocation(total_mem_mb, total_allocated_mb, is_container)
+
+    final_ram_mb = int(total_allocated_mb)
 
     final_ram_mb = int(total_allocated_mb)
     print(f"\nFinal allocated RAM: {final_ram_mb} MB ({final_ram_mb/1024:.1f} GB)")
@@ -3912,7 +4075,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 51)
-    print("     Minecraft Server Management Tool (v4.6)")
+    print("     Minecraft Server Management Tool (v4.7)")
     print("=" * 51)
     print("")
     print("A comprehensive command-line tool for managing")
