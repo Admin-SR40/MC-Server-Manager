@@ -779,6 +779,7 @@ def check_lock():
         
         command_match = re.search(r'Command:\s*(.+)', content)
         pid_match = re.search(r'PID:\s*(\d+)', content)
+        timestamp_match = re.search(r'Timestamp:\s*(.+)', content)
         
         if not command_match:
             return None
@@ -786,17 +787,54 @@ def check_lock():
         command_line = command_match.group(1).strip()
         pid = int(pid_match.group(1)) if pid_match else None
         
+        lock_time = None
+        if timestamp_match:
+            try:
+                time_str = timestamp_match.group(1).strip()
+                lock_time = datetime.datetime.strptime(time_str, '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                try:
+                    lock_time = datetime.datetime.fromtimestamp(os.path.getctime(LOCK_FILE))
+                except:
+                    lock_time = None
+        
+        if lock_time is None:
+            try:
+                lock_time = datetime.datetime.fromtimestamp(os.path.getctime(LOCK_FILE))
+            except:
+                lock_time = datetime.datetime.now()
+        
         is_running = pid and is_process_running(pid)
         
         return {
             'command': command_line.split(),
             'pid': pid,
-            'is_running': is_running
+            'is_running': is_running,
+            'timestamp': lock_time
         }
         
     except Exception as e:
         print(f"\nError reading lock file: {e}\n")
         return None
+
+def format_time_duration(start_time):
+    now = datetime.datetime.now()
+    duration = now - start_time
+    
+    total_seconds = int(duration.total_seconds())
+    days = total_seconds // (24 * 3600)
+    hours = (total_seconds % (24 * 3600)) // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    
+    if days > 0:
+        return f"{days}d {hours}h {minutes}m {seconds}s"
+    elif hours > 0:
+        return f"{hours}h {minutes}m {seconds}s"
+    elif minutes > 0:
+        return f"{minutes}m {seconds}s"
+    else:
+        return f"{seconds}s"
 
 def handle_pending_task():
     lock_info = check_lock()
@@ -805,12 +843,18 @@ def handle_pending_task():
     
     print("\n" + "=" * 51)
     
+    lock_time = lock_info['timestamp']
+    time_duration = format_time_duration(lock_time)
+    time_str = lock_time.strftime("%Y-%m-%d %H:%M:%S")
+    
     if lock_info['is_running']:
         print("            DUPLICATE INSTANCE DETECTED")
         print("=" * 51)
         print(f"\nAnother instance of the script is already running:")
-        print(f"  PID: {lock_info['pid']}")
-        print(f"  Command: {lock_info['command']}")
+        print(f" - PID: {lock_info['pid']}")
+        print(f" - Command: {lock_info['command']}")
+        print(f" - Lock created at: {time_str}")
+        print(f" - Task running for: {time_duration}")
         print("\nYou cannot run multiple instances simultaneously.")
         print("Please wait for the current operation to complete.")
         
@@ -819,7 +863,7 @@ def handle_pending_task():
             print(" Q - Quit this instance")
             print(" F - Force clear the lock and continue")
             print("\nForcing may cause data corruption if the other")
-            print("instance is actively modifying server files!\n")
+            print("instance is actively modifying server files!")
             
             choice = input("\nEnter your choice (Q/F): ").strip().upper()
             if choice == 'Q':
@@ -839,8 +883,10 @@ def handle_pending_task():
         print("               PENDING TASK DETECTED")
         print("=" * 51)
         print(f"\nPrevious command was interrupted:")
-        print(f"  {lock_info['command']}")
-        print(f"  (PID: {lock_info['pid']})")
+        print(f" - {lock_info['command']}")
+        print(f" - PID: {lock_info['pid']}")
+        print(f" - Task started at: {time_str}")
+        print(f" - Interrupted {time_duration} ago")
         print("\nThe script was terminated unexpectedly during this operation.")
         
         while True:
@@ -849,7 +895,7 @@ def handle_pending_task():
             print(" N - Clear the pending task")
             print(" Q - Quit the script without making any changes")
             print("\nYou should NEVER choose 'Y' if you left the workspace unchecked!\n")
-            choice = input("\nEnter your choice (Y/N/Q): ").strip().upper()
+            choice = input("Enter your choice (Y/N/Q): ").strip().upper()
             if choice == 'Y':
                 print("\nResuming pending task...\n")
                 return lock_info['command']
@@ -2200,13 +2246,13 @@ def calculate_players_memory(max_players, view_distance):
     total_memory_per_player = base_memory_per_player + chunks_per_player_mb
     
     if view_distance <= 6:
-        memory_multiplier = 0.8
+        memory_multiplier = 0.75
     elif view_distance <= 10:
         memory_multiplier = 1.0
     elif view_distance <= 16:
-        memory_multiplier = 1.3
+        memory_multiplier = 1.25
     else:
-        memory_multiplier = 1.6
+        memory_multiplier = 1.5
     
     estimated_online_players = max(1, round(max_players * 0.2))
     
@@ -2546,18 +2592,18 @@ def init_config_auto(prefill_version=None):
     players_ram_mb, player_details = calculate_players_memory(max_players, view_distance)
     
     print(f"\nPlayer allocation details:")
-    print(f"  Estimated players: {player_details['estimated_players']}")
-    print(f"  View distance: {player_details['view_distance']}")
-    print(f"  Multiplier: {player_details['memory_multiplier']}")
-    print(f"  Total allocation: {players_ram_mb:.1f} MB")
+    print(f" - Estimated players: {player_details['estimated_players']}")
+    print(f" - View distance: {player_details['view_distance']}")
+    print(f" - Multiplier: {player_details['memory_multiplier']}")
+    print(f" - Total allocation: {players_ram_mb:.1f} MB")
 
     total_allocated_mb = base_ram_mb + plugins_ram_mb + players_ram_mb
     
     print(f"\nMemory allocation breakdown:")
-    print(f" Base: {base_ram_mb} MB")
-    print(f" Plugins: {plugins_ram_mb} MB")
-    print(f" Players: {players_ram_mb:.1f} MB")
-    print(f" Total: {total_allocated_mb:.1f} MB")
+    print(f" - Base: {base_ram_mb} MB")
+    print(f" - Plugins: {plugins_ram_mb} MB")
+    print(f" - Players: {players_ram_mb:.1f} MB")
+    print(f" - Total: {total_allocated_mb:.1f} MB")
 
     total_allocated_mb = validate_memory_allocation(total_mem_mb, total_allocated_mb, is_container)
 
