@@ -23,7 +23,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "4.7"
+SCRIPT_VERSION = "4.8"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -4121,7 +4121,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 51)
-    print("     Minecraft Server Management Tool (v4.7)")
+    print("     Minecraft Server Management Tool (v4.8)")
     print("=" * 51)
     print("")
     print("A comprehensive command-line tool for managing")
