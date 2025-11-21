@@ -2547,7 +2547,7 @@ def init_config_auto(prefill_version=None):
         return
     
     if total_mem_mb <= 8192:
-        base_ram_mb = (9 * total_mem_mb + 8192) / 60
+        base_ram_mb = (29 * total_mem_mb + 8192) / 60
         base_ram_mb = round(base_ram_mb)
     else:
         base_ram_mb = 4096
