@@ -23,7 +23,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "4.8"
+SCRIPT_VERSION = "4.9"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -432,11 +432,11 @@ def is_online_mode():
 def format_list_table(items, list_type):
     if not items:
         if list_type == "banned-ips":
-            return "                          - Banned IPs -\n\n                       No banned IPs found."
+            return "                          - Banned IPs -\n╔═════════════════════════════════════════════════════════════╗\n║                                                             ║\n║                      No banned IPs found.                   ║\n║                                                             ║\n╚═════════════════════════════════════════════════════════════╝"
         elif list_type == "banned-players":
-            return "                        - Banned Players -\n\n                     No banned players found."
+            return "                        - Banned Players -\n╔════════════════════════════════════════════════════════════════╗\n║                                                                ║\n║                    No banned players found.                    ║\n║                                                                ║\n╚════════════════════════════════════════════════════════════════╝"
         else:
-            return "                          - Whitelist -\n\n                  No whitelisted players found."
+            return "                          - Whitelist -    \n╔════════════════════════════════════════════════════════════════╗\n║                                                                ║\n║                 No whitelisted players found.                  ║\n║                                                                ║\n╚════════════════════════════════════════════════════════════════╝"
     
     if list_type == "banned-ips":
         name_width = 20
@@ -4121,7 +4121,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 51)
-    print("     Minecraft Server Management Tool (v4.8)")
+    print("     Minecraft Server Management Tool (v4.9)")
     print("=" * 51)
     print("")
     print("A comprehensive command-line tool for managing")
