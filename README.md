@@ -94,7 +94,7 @@ A powerful Minecraft server management tool written in Python, supporting Purpur
 - `--plugins` - Manage plugins with dependency checking
 
 ### World Management
-- `--reset` - Reset worlds and configure seeds
+- `--worlds` - Manage worlds with multiple options
 
 ### Server Configuration
 - `--settings` - Edit server properties and settings interactively

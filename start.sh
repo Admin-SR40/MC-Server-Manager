@@ -23,7 +23,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "4.9"
+SCRIPT_VERSION = "5.0"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -1125,14 +1125,25 @@ def check_and_accept_eula():
     
     return True
 
-def reset_worlds():
-    if not create_lock(["--reset"]):
+def format_file_size(bytes_size):
+    if bytes_size == 0:
+        return "0 B"
+    units = ['B', 'KB', 'MB', 'GB']
+    size = float(bytes_size)
+    unit_index = 0
+    while size >= 1024 and unit_index < len(units) - 1:
+        size /= 1024
+        unit_index += 1
+    return f"{size:.1f} {units[unit_index]}"
+
+def manage_worlds():
+    if not create_lock(["--worlds"]):
         print("\nError: Could not create task lock\n")
         return
     
     try:
         print("\n" + "=" * 52)
-        print("                World Reset Utility")
+        print("                World Management Utility")
         print("=" * 52)
 
         WORLDS_DIR.mkdir(parents=True, exist_ok=True)
@@ -1141,25 +1152,31 @@ def reset_worlds():
 
         if not world_folders:
             print("\nNo world folders found.")
-            choice = input("Do you want to configure a new world seed now? (Y/N): ").strip().upper()
-            if choice == "Y":
-                configure_world_seed()
-            else:
-                print("Skipped seed configuration.\n")
+            print("\nAvailable operations:")
+            print(" 2. Backup worlds")
+            print(" 3. Import worlds")
+            print(" 4. Configure world seed")
+            
+            while True:
+                try:
+                    choice = input("\nYour choice (2/3/4): ").strip()
+                    if choice == "2":
+                        print("No worlds to backup.\n")
+                        break
+                    elif choice == "3":
+                        import_world()
+                        break
+                    elif choice == "4":
+                        configure_world_seed()
+                        break
+                    else:
+                        print("Invalid option. Please choose 2, 3, or 4.\n")
+                except KeyboardInterrupt:
+                    print("\nOperation canceled.\n")
+                    break
             return
 
         print("\n                - Existing Worlds -")
-
-        def format_file_size(bytes_size):
-            if bytes_size == 0:
-                return "0 B"
-            units = ['B', 'KB', 'MB', 'GB']
-            size = float(bytes_size)
-            unit_index = 0
-            while size >= 1024 and unit_index < len(units) - 1:
-                size /= 1024
-                unit_index += 1
-            return f"{size:.1f} {units[unit_index]}"
 
         world_info = []
         total_size = 0
@@ -1194,77 +1211,281 @@ def reset_worlds():
         print(f"║ {'0. All':<{name_width - 1}}║ {format_file_size(total_size):<{size_width - 1}}║ {'All Worlds':<{status_width - 1}}║")
         print("╚" + "═" * name_width + "╩" + "═" * size_width + "╩" + "═" * status_width + "╝")
 
+        print("\nAvailable operations:")
+        print(" 1. Delete worlds")
+        print(" 2. Backup worlds")
+        print(" 3. Import worlds")
+        print(" 4. Configure world seed")
+        
         try:
-            selection = input("\nSelect world folders to delete (space-separated numbers, 0 for all): ").strip()
-            if not selection:
-                print("No selection made. Operation canceled.\n")
+            operation_choice = input("\nSelect operation (1-4): ").strip()
+            if not operation_choice:
+                print("No operation selected. Operation canceled.\n")
                 return
 
-            selected_indices = []
-            for num_str in selection.split():
-                try:
-                    num = int(num_str)
-                    if 0 <= num <= len(world_info):
-                        selected_indices.append(num)
-                    else:
-                        print(f"Invalid number: {num}")
-                        return
-                except ValueError:
-                    print(f"Invalid input: {num_str}")
-                    return
-
-            if 0 in selected_indices:
-                confirm = input("\nAre you sure you want to delete ALL world folders?\nThis cannot be undone! (Y/N): ").strip().upper()
-                if confirm != "Y":
-                    print("Operation canceled.\n")
-                    return
-
-                for world_folder, _, _ in world_info:
-                    try:
-                        shutil.rmtree(world_folder)
-                        print(f"Deleted: {world_folder.name}")
-                    except Exception as e:
-                        print(f"Error deleting {world_folder.name}: {e}")
-
-                print("\nAll world folders deleted successfully.\n")
-
+            if operation_choice == "1":
+                delete_worlds(world_info)
+            elif operation_choice == "2":
+                backup_worlds(world_info)
+            elif operation_choice == "3":
+                import_world()
+            elif operation_choice == "4":
+                configure_world_seed()
             else:
-                worlds_to_delete = [world_info[i - 1][0] for i in selected_indices]
-                print("\nYou have selected the following world(s) to delete:")
-                for w in worlds_to_delete:
-                    print(f" - {w.name}")
-
-                confirm = input("\nAre you sure you want to delete these world(s)?\nThis cannot be undone! (Y/N): ").strip().upper()
-                if confirm != "Y":
-                    print("Operation canceled.\n")
-                    return
-
-                for w in worlds_to_delete:
-                    try:
-                        shutil.rmtree(w)
-                        print(f"Deleted: {w.name}")
-                    except Exception as e:
-                        print(f"Error deleting {w.name}: {e}")
-
-                print("\nSelected world(s) deleted successfully.\n")
-
-            remaining = [d for d in WORLDS_DIR.iterdir() if d.is_dir()]
-            if not remaining:
-                choice = input("All world folders have been removed.\nDo you want to configure a new world seed now? (Y/N): ").strip().upper()
-                if choice == "Y":
-                    configure_world_seed()
-                else:
-                    print("Skipped seed configuration.\n")
-            else:
-                print("Some world folders remain. Skipping seed configuration.\n")
+                print("Invalid operation selection.\n")
+                return
 
         except KeyboardInterrupt:
             print("\nOperation canceled by user.\n")
         except Exception as e:
-            print(f"Error during world reset: {e}\n")
+            print(f"Error during world operation: {e}\n")
     
     finally:
         remove_lock()
+
+def delete_worlds(world_info):
+    try:
+        selection = input("\nSelect world folders to delete (space-separated numbers, 0 for all): ").strip()
+        if not selection:
+            print("No selection made. Operation canceled.\n")
+            return
+
+        selected_indices = []
+        for num_str in selection.split():
+            try:
+                num = int(num_str)
+                if 0 <= num <= len(world_info):
+                    selected_indices.append(num)
+                else:
+                    print(f"Invalid number: {num}")
+                    return
+            except ValueError:
+                print(f"Invalid input: {num_str}")
+                return
+
+        if 0 in selected_indices:
+            confirm = input("\nAre you sure you want to delete ALL world folders?\nThis cannot be undone! (Y/N): ").strip().upper()
+            if confirm != "Y":
+                print("Operation canceled.\n")
+                return
+
+            for world_folder, _, _ in world_info:
+                try:
+                    shutil.rmtree(world_folder)
+                    print(f"Deleted: {world_folder.name}")
+                except Exception as e:
+                    print(f"Error deleting {world_folder.name}: {e}")
+
+            print("\nAll world folders deleted successfully.\n")
+
+        else:
+            worlds_to_delete = [world_info[i - 1][0] for i in selected_indices]
+            print("\nYou have selected the following world(s) to delete:")
+            for w in worlds_to_delete:
+                print(f" - {w.name}")
+
+            confirm = input("\nAre you sure you want to delete these world(s)?\nThis cannot be undone! (Y/N): ").strip().upper()
+            if confirm != "Y":
+                print("Operation canceled.\n")
+                return
+
+            for w in worlds_to_delete:
+                try:
+                    shutil.rmtree(w)
+                    print(f"Deleted: {w.name}")
+                except Exception as e:
+                    print(f"Error deleting {w.name}: {e}")
+
+            print("\nSelected world(s) deleted successfully.\n")
+
+        remaining = [d for d in WORLDS_DIR.iterdir() if d.is_dir()]
+        if not remaining:
+            choice = input("All world folders have been removed.\nDo you want to configure a new world seed now? (Y/N): ").strip().upper()
+            if choice == "Y":
+                configure_world_seed()
+            else:
+                print("Skipped seed configuration.\n")
+        else:
+            print("Some world folders remain. Skipping seed configuration.\n")
+
+    except KeyboardInterrupt:
+        print("\nOperation canceled by user.\n")
+
+def backup_worlds(world_info):
+    try:
+        config = load_config()
+        current_version = config.get("version", "unknown")
+    except:
+        print("Error: Could not determine current server version for backup.\n")
+        return
+
+    selection = input("\nSelect world folders to backup (space-separated numbers, 0 for all): ").strip()
+    if not selection:
+        print("No selection made. Operation canceled.\n")
+        return
+
+    selected_indices = []
+    for num_str in selection.split():
+        try:
+            num = int(num_str)
+            if 0 <= num <= len(world_info):
+                selected_indices.append(num)
+            else:
+                print(f"Invalid number: {num}")
+                return
+        except ValueError:
+            print(f"Invalid input: {num_str}")
+            return
+
+    if 0 in selected_indices:
+        worlds_to_backup = [world_info[i][0] for i in range(len(world_info))]
+        print("\nYou have selected ALL worlds to backup:")
+    else:
+        worlds_to_backup = [world_info[i - 1][0] for i in selected_indices]
+        print("\nYou have selected the following world(s) to backup:")
+
+    for w in worlds_to_backup:
+        print(f" - {w.name}")
+
+    confirm = input("\nProceed with backup? (Y/N): ").strip().upper()
+    if confirm != "Y":
+        print("Operation canceled.\n")
+        return
+
+    backup_dir = BUNDLES_DIR / current_version
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_filename = f"worlds_{timestamp}.zip"
+    backup_path = backup_dir / backup_filename
+
+    print(f"\nCreating backup: {backup_path}")
+
+    try:
+        with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for world_folder in worlds_to_backup:
+                if not world_folder.exists():
+                    print(f"Warning: World folder {world_folder.name} does not exist, skipping.")
+                    continue
+                
+                print(f"Adding: {world_folder.name}")
+                for root, _, files in os.walk(world_folder):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.join(world_folder.name, os.path.relpath(file_path, world_folder))
+                        zipf.write(file_path, arcname)
+
+        file_size = os.path.getsize(backup_path)
+        print(f"\nBackup created successfully: {backup_path}")
+        print(f"File size: {format_file_size(file_size)}")
+        print(f"Worlds backed up: {len(worlds_to_backup)}")
+        print("")
+
+    except Exception as e:
+        print(f"Error creating backup: {e}\n")
+        if backup_path.exists():
+            backup_path.unlink()
+
+def import_world():
+    print("\n" + "=" * 50)
+    print("               World Import Utility")
+    print("=" * 50)
+    
+    while True:
+        zip_path_input = input("\nEnter the path to the world backup ZIP file: ").strip()
+        if not zip_path_input:
+            print("Operation canceled.\n")
+            return
+        
+        zip_path = Path(zip_path_input)
+        
+        if not zip_path.exists():
+            print(f"Error: File not found: {zip_path}")
+            continue
+        
+        if zip_path.suffix.lower() != '.zip':
+            print("Error: File must be a ZIP archive.")
+            continue
+        
+        break
+
+    print(f"\nReading archive: {zip_path.name}")
+    
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as zipf:
+            world_candidates = set()
+            for name in zipf.namelist():
+                if name.endswith('/'):
+                    continue
+                parts = name.split('/')
+                if len(parts) >= 2 and parts[-1] == 'level.dat':
+                    world_candidates.add(parts[0])
+            
+            if not world_candidates:
+                print("Error: No valid worlds found in the archive.")
+                print("A valid world must contain a level.dat file.")
+                print("")
+                return
+            
+            print(f"Found {len(world_candidates)} world(s) in archive:")
+            for i, world_name in enumerate(world_candidates, 1):
+                print(f" {i}. {world_name}")
+            
+            existing_worlds = [d.name for d in WORLDS_DIR.iterdir() if d.is_dir()]
+            conflicting_worlds = [w for w in world_candidates if w in existing_worlds]
+            
+            if conflicting_worlds:
+                print(f"\nWarning: The following worlds already exist:")
+                for world in conflicting_worlds:
+                    print(f" - {world}")
+                
+                replace_choice = input("\nReplace existing worlds? (Y/N): ").strip().upper()
+                if replace_choice != "Y":
+                    print("Import canceled.\n")
+                    return
+                
+                for world_name in conflicting_worlds:
+                    world_path = WORLDS_DIR / world_name
+                    try:
+                        shutil.rmtree(world_path)
+                        print(f"Removed existing world: {world_name}")
+                    except Exception as e:
+                        print(f"Error removing {world_name}: {e}")
+            
+            print(f"\nExtracting worlds...")
+            extracted_count = 0
+            
+            for world_name in world_candidates:
+                world_path = WORLDS_DIR / world_name
+                world_path.mkdir(parents=True, exist_ok=True)
+                
+                for name in zipf.namelist():
+                    if name.startswith(world_name + '/'):
+                        relative_path = name[len(world_name)+1:]
+                        if not relative_path:
+                            continue
+                        
+                        target_path = world_path / relative_path
+                        target_path.parent.mkdir(parents=True, exist_ok=True)
+                        
+                        if not name.endswith('/'):
+                            with zipf.open(name) as source, open(target_path, 'wb') as target:
+                                shutil.copyfileobj(source, target)
+                
+                if (world_path / "level.dat").exists():
+                    print(f"✓ Imported: {world_name}")
+                    extracted_count += 1
+                else:
+                    print(f"✗ Invalid world (missing level.dat): {world_name}")
+                    shutil.rmtree(world_path)
+            
+            print(f"\nSuccessfully imported {extracted_count} world(s).")
+            print("")
+            
+    except zipfile.BadZipFile:
+        print("Error: The file is not a valid ZIP archive.\n")
+    except Exception as e:
+        print(f"Error importing worlds: {e}\n")
 
 def configure_world_seed():
     if not SERVER_PROPERTIES.exists():
@@ -4121,7 +4342,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 51)
-    print("     Minecraft Server Management Tool (v4.9)")
+    print("     Minecraft Server Management Tool (v5.0)")
     print("=" * 51)
     print("")
     print("A comprehensive command-line tool for managing")
@@ -4139,7 +4360,7 @@ def show_help():
     print("  --plugins         Show installed plugins and toggle them")
     print("  --save <ver>      Save current version to bundles")
     print("  --backup          Create timestamped backup of current version")
-    print("  --reset           Reset worlds and set seed for new worlds")
+    print("  --worlds          Manage worlds with multiple options")
     print("  --get <ver>       Fetch a Purpur server info and download")
     print("  --new             Save current server and create a new one")
     print("  --rollback        Rollback to a previous backup")
@@ -4196,8 +4417,8 @@ def main():
             download_version(sys.argv[2])
         else:
             download_version()
-    elif sys.argv[1] == "--reset":
-        reset_worlds()
+    elif sys.argv[1] == "--worlds":
+        manage_worlds()
     elif sys.argv[1] == "--new":
         create_new_server()
     elif sys.argv[1] == "--upgrade":
