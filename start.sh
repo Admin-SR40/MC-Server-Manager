@@ -15,6 +15,8 @@ import json
 import urllib.request
 import fnmatch
 import hashlib
+import socket
+import uuid
 from pathlib import Path
 
 try:
@@ -23,7 +25,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "5.0"
+SCRIPT_VERSION = "5.1"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -51,6 +53,138 @@ BASE_EXCLUDE_LIST = [
     "temp_jar",
     "info.txt"
 ]
+
+def get_device_id():
+    try:
+        hostname = socket.gethostname()
+        
+        mac = ':'.join(['{:02x}'.format((uuid.getnode() >> elements) & 0xff) 
+                       for elements in range(0,8*6,8)][::-1])
+        
+        device_str = f"{hostname}:{mac}"
+        return hashlib.md5(device_str.encode()).hexdigest()
+    except Exception as e:
+        print(f"Warning: Could not generate device ID: {e}")
+        return "unknown"
+
+def check_environment_change():
+    if not CONFIG_FILE.exists():
+        return True
+    
+    try:
+        config = configparser.ConfigParser()
+        config.read(CONFIG_FILE)
+        
+        if "SERVER" not in config or "device" not in config["SERVER"]:
+            print("\n" + "=" * 62)
+            print("              ENVIRONMENT CHECK - NO DEVICE DATA")
+            print("=" * 62)
+            print("\nWarning: No device identification data found in configuration.")
+            print("This might be the first run or the configuration was created")
+            print("with an older version of the script.")
+            print("\nIt is recommended to run --init or --init auto to ensure")
+            print("proper environment detection in the future.")
+            
+            choice = input("\nContinue anyway? (Y/N): ").strip().upper()
+            if choice != 'Y':
+                print("Exiting script...\n")
+                sys.exit(0)
+            
+            return True
+        
+        stored_device_id = config["SERVER"]["device"]
+        current_device_id = get_device_id()
+        
+        if stored_device_id == current_device_id:
+            return True
+        
+        print("\n" + "=" * 61)
+        print("                 ENVIRONMENT CHANGE DETECTED")
+        print("=" * 61)
+        print("\nWarning: The running environment has changed!")
+        print("This script was previously run on a different machine or")
+        print("the system configuration has been modified.")
+        print("\nThis could indicate:")
+        print(" - Running on a different computer")
+        print(" - Virtual machine migration")
+        print(" - Network/hardware changes")
+        print(" - System reinstallation")
+        print("\nIt is strongly recommended to reconfigure the server")
+        print("for the new environment to avoid potential issues.")
+        
+        while True:
+            print("\nAvailable options:")
+            print(" 1. Backup current configuration and run --init")
+            print(" 2. Backup current configuration and run --init auto") 
+            print(" 3. Ignore the warning and continue")
+            print(" 4. Exit without making any changes")
+            
+            choice = input("\nEnter your choice (1-4): ").strip()
+            
+            if choice == "1":
+                return handle_environment_change("manual")
+            elif choice == "2":
+                return handle_environment_change("auto")
+            elif choice == "3":
+                return update_device_id_and_continue()
+            elif choice == "4":
+                print("Exiting script...\n")
+                sys.exit(0)
+            else:
+                print("Invalid choice. Please enter 1, 2, 3, or 4.")
+                
+    except Exception as e:
+        print(f"Error during environment check: {e}")
+        print("Continuing with normal operation...")
+        return True
+
+def handle_environment_change(init_type):
+    try:
+        if CONFIG_FILE.exists():
+            backup_file = CONFIG_FILE.with_suffix('.cfg.bak')
+            shutil.copy2(CONFIG_FILE, backup_file)
+            print(f"\nConfiguration backed up to: {backup_file}")
+        
+        if init_type == "manual":
+            print("Running manual initialization...")
+            init_config()
+        else:
+            print("Running auto initialization...")
+            init_config_auto()
+        
+        print("\nEnvironment configuration completed successfully!")
+        print("Please run the script again to start the server.\n")
+        sys.exit(0)
+        
+    except Exception as e:
+        print(f"Error during environment change handling: {e}")
+        print("Falling back to normal operation...")
+        return True
+
+def update_device_id_and_continue():
+    try:
+        if CONFIG_FILE.exists():
+            config = configparser.ConfigParser()
+            config.read(CONFIG_FILE)
+            
+            if "SERVER" not in config:
+                config["SERVER"] = {}
+            
+            current_device_id = get_device_id()
+            config["SERVER"]["device"] = current_device_id
+            
+            with open(CONFIG_FILE, "w") as f:
+                config.write(f)
+            
+            print("\nDevice ID updated to current environment.")
+            print("Continuing with normal operation...\n")
+        
+        return True
+        
+    except Exception as e:
+        print(f"Error updating device ID: {e}")
+        print("Continuing with normal operation...")
+        return True
 
 def is_process_running(pid):
     try:
@@ -936,7 +1070,6 @@ def check_port_availability():
             print(f" - Error reading server.properties: {e}")
     
     try:
-        import socket
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(1)
             result = s.connect_ex(('localhost', port))
@@ -2662,10 +2795,13 @@ def init_config(prefill_version=None):
     print("These will be appended after the default parameters.")
     additional_params = input("Enter additional parameters (leave empty if none): ").strip()
     
+    device_id = get_device_id()
+    
     config["SERVER"] = {
         "version": version,
         "max_ram": str(max_ram),
         "java_path": java_path,
+        "device": device_id
     }
     
     if additional_exclude:
@@ -2833,10 +2969,13 @@ def init_config_auto(prefill_version=None):
     final_ram_mb = int(total_allocated_mb)
     print(f"\nFinal allocated RAM: {final_ram_mb} MB ({final_ram_mb/1024:.1f} GB)")
 
+    device_id = get_device_id()
+    
     config["SERVER"] = {
         "version": version,
         "max_ram": str(final_ram_mb),
         "java_path": java_path,
+        "device": device_id,
         "additional_list": " ",
         "additional_parameters": " "
     }
@@ -4342,7 +4481,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 51)
-    print("     Minecraft Server Management Tool (v5.0)")
+    print("     Minecraft Server Management Tool (v5.1)")
     print("=" * 51)
     print("")
     print("A comprehensive command-line tool for managing")
@@ -4379,6 +4518,9 @@ def show_help():
 clear_screen()
 
 def main():
+    if not check_environment_change():
+        return
+    
     pending_command = handle_pending_task()
     if pending_command:
         sys.argv = [sys.argv[0]] + pending_command
