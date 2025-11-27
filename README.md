@@ -145,6 +145,7 @@ This script uses following structure to make it easier to manage:
 - Plugin-based memory calculation
 - Player capacity estimation
 - Container environment optimization
+- See `def init_config_auto()` to get more information
 
 ### Dependency-Aware Plugin Management
 Automatically detects plugin dependencies, warns about potential impacts when disabling plugins, and supports automatic dependency chain disabling.
