@@ -25,7 +25,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "5.1"
+SCRIPT_VERSION = "5.2"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -58,16 +58,65 @@ def get_device_id():
     try:
         hostname = socket.gethostname()
         
-        mac = ':'.join(['{:02x}'.format((uuid.getnode() >> elements) & 0xff) 
-                       for elements in range(0,8*6,8)][::-1])
+        android_id = None
         
-        device_str = f"{hostname}:{mac}"
+        try:
+            result = subprocess.run(
+                ['getprop', 'ro.serialno'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                android_id = result.stdout.strip()
+        except (subprocess.SubprocessError, FileNotFoundError):
+            pass
+        
+        if not android_id:
+            try:
+                result = subprocess.run(
+                    ['getprop', 'ro.product.model'],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    model = result.stdout.strip()
+                    
+                    result2 = subprocess.run(
+                        ['getprop', 'ro.product.manufacturer'],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        timeout=5
+                    )
+                    manufacturer = result2.stdout.strip() if result2.returncode == 0 else "unknown"
+                    
+                    android_id = f"{manufacturer}:{model}"
+            except (subprocess.SubprocessError, FileNotFoundError):
+                pass
+        
+        if not android_id:
+            android_id = hostname
+        
+        device_str = f"{hostname}:{android_id}"
         return hashlib.md5(device_str.encode()).hexdigest()
+        
     except Exception as e:
-        print(f"Warning: Could not generate device ID: {e}")
+        print(f"Warning: Could not generate stable device ID: {e}")
+        print(" - Using 'unknown' as device identifier")
         return "unknown"
 
 def check_environment_change():
+    read_only_commands = ["--help", "--license", "--info", "--list"]
+    is_read_only_command = len(sys.argv) > 1 and sys.argv[1] in read_only_commands
+    is_init_command = len(sys.argv) > 1 and sys.argv[1] == "--init"
+    
+    if is_read_only_command or is_init_command:
+        return True
+
     if not CONFIG_FILE.exists():
         return True
     
@@ -94,6 +143,17 @@ def check_environment_change():
         
         stored_device_id = config["SERVER"]["device"]
         current_device_id = get_device_id()
+        
+        if stored_device_id == "unknown" or current_device_id == "unknown":
+            print("\n" + "=" * 61)
+            print("                 LIMITED ENVIRONMENT DETECTION")
+            print("=" * 61)
+            print("\nNote: Running on a system with limited device identification.")
+            print("Environment change detection is disabled for this session.")
+            print("\nIf you're experiencing issues, consider running --init again")
+            print("to refresh the configuration.")
+            print("\nContinuing with normal operation...\n")
+            return True
         
         if stored_device_id == current_device_id:
             return True
@@ -1286,24 +1346,20 @@ def manage_worlds():
         if not world_folders:
             print("\nNo world folders found.")
             print("\nAvailable operations:")
-            print(" 2. Backup worlds")
-            print(" 3. Import worlds")
-            print(" 4. Configure world seed")
+            print(" 1. Import worlds")
+            print(" 2. Configure world seed")
             
             while True:
                 try:
-                    choice = input("\nYour choice (2/3/4): ").strip()
-                    if choice == "2":
-                        print("No worlds to backup.\n")
-                        break
-                    elif choice == "3":
+                    choice = input("\nYour choice (1/2): ").strip()
+                    if choice == "1":
                         import_world()
                         break
-                    elif choice == "4":
+                    elif choice == "2":
                         configure_world_seed()
                         break
                     else:
-                        print("Invalid option. Please choose 2, 3, or 4.\n")
+                        print("Invalid option. Please choose 1 or 2.\n")
                 except KeyboardInterrupt:
                     print("\nOperation canceled.\n")
                     break
@@ -1375,6 +1431,81 @@ def manage_worlds():
     
     finally:
         remove_lock()
+
+def backup_worlds(world_info):
+    try:
+        config = load_config()
+        current_version = config.get("version", "unknown")
+    except:
+        print("Error: Could not determine current server version for backup.\n")
+        return
+
+    selection = input("\nSelect world folders to backup (space-separated numbers, 0 for all): ").strip()
+    if not selection:
+        print("No selection made. Operation canceled.\n")
+        return
+
+    selected_indices = []
+    for num_str in selection.split():
+        try:
+            num = int(num_str)
+            if 0 <= num <= len(world_info):
+                selected_indices.append(num)
+            else:
+                print(f"Invalid number: {num}")
+                return
+        except ValueError:
+            print(f"Invalid input: {num_str}")
+            return
+
+    if 0 in selected_indices:
+        worlds_to_backup = [world_info[i][0] for i in range(len(world_info))]
+        print("\nYou have selected ALL worlds to backup:")
+    else:
+        worlds_to_backup = [world_info[i - 1][0] for i in selected_indices]
+        print("\nYou have selected the following world(s) to backup:")
+
+    for w in worlds_to_backup:
+        print(f" - {w.name}")
+
+    confirm = input("\nProceed with backup? (Y/N): ").strip().upper()
+    if confirm != "Y":
+        print("Operation canceled.\n")
+        return
+
+    backup_dir = BUNDLES_DIR / current_version / "worlds"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_filename = f"worlds_{timestamp}.zip"
+    backup_path = backup_dir / backup_filename
+
+    print(f"\nCreating backup: {backup_path}")
+
+    try:
+        with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for world_folder in worlds_to_backup:
+                if not world_folder.exists():
+                    print(f"Warning: World folder {world_folder.name} does not exist, skipping.")
+                    continue
+                
+                print(f"Adding: {world_folder.name}")
+                for root, _, files in os.walk(world_folder):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.join(world_folder.name, os.path.relpath(file_path, world_folder))
+                        zipf.write(file_path, arcname)
+
+        file_size = os.path.getsize(backup_path)
+        print(f"\nBackup created successfully: {backup_path}")
+        print(f"File size: {format_file_size(file_size)}")
+        print(f"Worlds backed up: {len(worlds_to_backup)}")
+        print("")
+
+    except Exception as e:
+        print(f"Error creating backup: {e}\n")
+        if backup_path.exists():
+            backup_path.unlink()
 
 def delete_worlds(world_info):
     try:
@@ -4481,7 +4612,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 51)
-    print("     Minecraft Server Management Tool (v5.1)")
+    print("      Minecraft Server Management Tool (v5.2)")
     print("=" * 51)
     print("")
     print("A comprehensive command-line tool for managing")
