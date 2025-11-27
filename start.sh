@@ -146,7 +146,7 @@ def check_environment_change():
         
         if stored_device_id == "unknown" or current_device_id == "unknown":
             print("\n" + "=" * 61)
-            print("                 LIMITED ENVIRONMENT DETECTION")
+            print("                LIMITED ENVIRONMENT DETECTION")
             print("=" * 61)
             print("\nNote: Running on a system with limited device identification.")
             print("Environment change detection is disabled for this session.")
