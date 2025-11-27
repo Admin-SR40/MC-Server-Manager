@@ -114,6 +114,7 @@ Configuration file is located at `config/version.cfg` and includes:
 - `java_path`: Java executable path
 - `additional_list`: Additional files/directories to exclude from backups
 - `additional_parameters`: Additional server startup parameters
+- `device`: The generated device ID stops execution when environment changed
 
 ## Directory Structure
 
