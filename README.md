@@ -1,7 +1,7 @@
 # Minecraft Server Manager
 
 ## Introduction
-A powerful Minecraft server management tool written in Python, supporting Purpur server. This tool provides a comprehensive server management solution including version management, backup and recovery, plugin management, world reset, and more, making server administration simpler and more efficient.
+A powerful Minecraft server management tool written in Python, supporting Purpur server. This tool provides a comprehensive server management solution including version management, backup and recovery, plugin management, world management, and more, making server administration simpler and more efficient.
 
 ## Key Features
 
@@ -30,8 +30,9 @@ A powerful Minecraft server management tool written in Python, supporting Purpur
 ### World Management
 - **World Reset**: Safely delete and regenerate worlds
 - **Seed Configuration**: Flexible world generation seed settings
-- **Selective Deletion**: Support single or multiple world deletion
+- **Selective Management**: Support single or multiple world management
 - **World Status**: Display world size and corruption status
+- **Easy Import/Export**: Make backup/rollback much easier 
 
 ### System Maintenance
 - **File Cleanup**: Automatically clean logs and temporary files to free disk space
@@ -46,6 +47,7 @@ A powerful Minecraft server management tool written in Python, supporting Purpur
 - **Process Monitoring**: Check if previous tasks are still running
 - **Interruption Recovery**: Resume interrupted operations safely
 - **Time Tracking**: Display task duration and interruption times
+- **Device Fingerprint**: Detect environment changes to prevent data loss
 
 ## System Requirements
 - Python 3.8 or higher is recommended
@@ -55,11 +57,10 @@ A powerful Minecraft server management tool written in Python, supporting Purpur
 - Container Environments: Docker, Kubernetes (supported)
 
 ## Installation
-
-1. Download the start.sh script to your server directory
+1. Download the start.sh script to your server directory.
 2. Install required Python dependency:
     `pip install PyYAML`
-3. Make the script executable if using Linux:
+3. Make the script executable if using Unix-like systems:
     `chmod +x start.sh`
 
 ## Command Reference
@@ -106,7 +107,6 @@ A powerful Minecraft server management tool written in Python, supporting Purpur
 - `--dump <search terms>` - Search and dump specific log content
 
 ## Configuration
-
 Configuration file is located at `config/version.cfg` and includes:
 
 - `version`: Minecraft server version
@@ -117,7 +117,6 @@ Configuration file is located at `config/version.cfg` and includes:
 - `device`: The generated device ID stops execution when environment changed
 
 ## Directory Structure
-
 This script uses following structure to make it easier to manage:
 ```
 ./
@@ -130,7 +129,9 @@ This script uses following structure to make it easier to manage:
 │       └── [version]/
 │               ├── core.zip # Server core package
 │               ├── server.zip # Full server backup
-│               └── *.zip # Timestamped backups
+│               ├── *.zip # Timestamped backups
+│               └── worlds
+│                       └── worlds_*.zip # Timestamped world backups
 ├── plugins/ # Plugin directory
 ├── worlds/ # World data
 ├── logs/ # Server logs
@@ -142,10 +143,10 @@ This script uses following structure to make it easier to manage:
 
 ### Smart Memory Allocation
 - Automatic detection of system memory (including container limits)
+- Allocate base memory by using formula: (29 * MAX + 8192) / 60, capped at 4GB
 - Plugin-based memory calculation
 - Player capacity estimation
 - Container environment optimization
-- See `def init_config_auto()` to get more information
 
 ### Dependency-Aware Plugin Management
 Automatically detects plugin dependencies, warns about potential impacts when disabling plugins, and supports automatic dependency chain disabling.
@@ -173,6 +174,7 @@ All downloaded files are verified with MD5 checksums to ensure file integrity an
 - Real-time configuration preview
 - Validation for all input parameters
 - Batch editing support
+- Smart auto selections
 
 ### Force Mode Operations
 - `--version force` - Bypass version check and download latest script
@@ -181,12 +183,10 @@ All downloaded files are verified with MD5 checksums to ensure file integrity an
 ## Troubleshooting
 
 ### Common Issues
-
 1. Python Dependency Errors
     - Ensure PyYAML is installed: pip install PyYAML
 
 2. Java Path Issues
-
     - Use --init to reconfigure Java path
     - Ensure Java is properly installed
 
@@ -199,14 +199,11 @@ All downloaded files are verified with MD5 checksums to ensure file integrity an
     - Ensure read/write permissions for server directory
 
 ## Wiki & Documentation
-
 For detailed documentation, tutorials, and best practices, visit the AI-Generated Wiki:
 - [DeepWiki](https://deepwiki.com/Admin-SR40/MC-Server-Manager)
 
 ## License
-
 This project is licensed under the **MIT** License. See LICENSE file for details.
 
 ## Contributing
-
 Issues and Pull Requests are welcome to improve this project.
