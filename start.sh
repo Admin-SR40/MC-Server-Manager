@@ -25,7 +25,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "5.2"
+SCRIPT_VERSION = "5.3"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -2828,6 +2828,121 @@ def validate_java_path(java_path):
 
     return None
 
+def detect_server_cores():
+    if SERVER_JAR.exists():
+        print("core.jar already exists. Skipping core detection.")
+        return True
+    
+    jar_files = list(BASE_DIR.glob("*.jar"))
+    
+    if not jar_files:
+        print("No JAR files found in current directory.")
+        return False
+    
+    valid_cores = []
+    
+    for jar_file in jar_files:
+        try:
+            with zipfile.ZipFile(jar_file, 'r') as jar:
+                if 'version.json' in jar.namelist():
+                    with jar.open('version.json') as f:
+                        version_data = json.load(f)
+                        version_id = version_data.get("id", "unknown")
+                        valid_cores.append({
+                            'path': jar_file,
+                            'name': jar_file.name,
+                            'version': version_id
+                        })
+                        print(f"Found valid server core: {jar_file.name} (Version: {version_id})")
+        except (zipfile.BadZipFile, KeyError, json.JSONDecodeError) as e:
+            print(f"Skipping {jar_file.name}: Not a valid server core ({e})")
+            continue
+        except Exception as e:
+            print(f"Error checking {jar_file.name}: {e}")
+            continue
+    
+    if not valid_cores:
+        print("No valid server cores found in JAR files.")
+        return False
+    
+    if len(valid_cores) == 1:
+        core = valid_cores[0]
+        print(f"Using the only valid server core: {core['name']}")
+        shutil.copy2(core['path'], SERVER_JAR)
+        print(f"Copied {core['name']} to core.jar")
+        return True
+    
+    return valid_cores
+
+def select_server_core(cores, auto_mode=False):
+    if auto_mode:
+        highest_core = None
+        highest_version = ""
+        
+        for core in cores:
+            try:
+                if compare_versions(core['version'], highest_version) > 0:
+                    highest_core = core
+                    highest_version = core['version']
+            except:
+                if not highest_core:
+                    highest_core = core
+        
+        if highest_core:
+            print(f"Auto-selected highest version: {highest_core['name']} (Version: {highest_core['version']})")
+            shutil.copy2(highest_core['path'], SERVER_JAR)
+            print(f"Copied {highest_core['name']} to core.jar")
+            return True
+        else:
+            print("Error: Could not auto-select a server core.")
+            return False
+    else:
+        print("\nDetected multiple server cores in current directory:")
+        for i, core in enumerate(cores, 1):
+            print(f" {i}. {core['name']} (Version: {core['version']})")
+        
+        while True:
+            try:
+                choice = input("\nWhich one would you like to use (leave blank for newest): ").strip()
+                
+                if not choice:
+                    highest_core = None
+                    highest_version = ""
+                    
+                    for core in cores:
+                        try:
+                            if compare_versions(core['version'], highest_version) > 0:
+                                highest_core = core
+                                highest_version = core['version']
+                        except:
+                            if not highest_core:
+                                highest_core = core
+                    
+                    if highest_core:
+                        print(f"Selected newest version: {highest_core['name']} (Version: {highest_core['version']})")
+                        shutil.copy2(highest_core['path'], SERVER_JAR)
+                        print(f"Copied {highest_core['name']} to core.jar")
+                        return True
+                    else:
+                        print("Error: Could not determine newest version.")
+                        return False
+                
+                index = int(choice) - 1
+                if 0 <= index < len(cores):
+                    selected_core = cores[index]
+                    print(f"Selected: {selected_core['name']} (Version: {selected_core['version']})")
+                    shutil.copy2(selected_core['path'], SERVER_JAR)
+                    print(f"Copied {selected_core['name']} to core.jar")
+                    return True
+                else:
+                    print(f"Please enter a number between 1 and {len(cores)}")
+            
+            except ValueError:
+                print("Please enter a valid number or leave blank for newest.")
+            except Exception as e:
+                print(f"Error selecting server core: {e}")
+                return False
+
 def init_config(prefill_version=None):
     print("=" * 50)
     print("         Minecraft Server Initialization")
@@ -2840,6 +2955,20 @@ def init_config(prefill_version=None):
         if confirm != "Y":
             print("\nOperation canceled.\nExisting configuration preserved.\n")
             return
+
+    print("\nChecking for server core files...")
+    core_result = detect_server_cores()
+    
+    if core_result is True:
+        pass
+    elif isinstance(core_result, list) and len(core_result) > 0:
+        if not select_server_core(core_result, auto_mode=False):
+            print("Failed to select server core. Please check your JAR files.")
+            return
+    elif core_result is False:
+        print("No valid server cores found.")
+        print("Please make sure you have server JAR files in the current directory.")
+        return
     
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     
@@ -2849,11 +2978,33 @@ def init_config(prefill_version=None):
         version = prefill_version
         print(f"\nUsing version: {version}")
     else:
-        while True:
-            version = input("\nEnter Minecraft server version (e.g., 1.21.5 or 1.21): ").strip()
-            if re.match(r"^\d+\.\d+(\.\d+)?$", version):
-                break
-            print("Invalid version format. Use format like 1.21.5 or 1.21")
+        detected_version = "unknown"
+        if SERVER_JAR.exists():
+            try:
+                with zipfile.ZipFile(SERVER_JAR, 'r') as jar:
+                    with jar.open('version.json') as f:
+                        data = json.load(f)
+                        detected_version = data.get("id", "unknown")
+            except Exception as e:
+                print(f"Could not detect version from core.jar: {e}")
+        
+        if detected_version != "unknown":
+            print(f"\nDetected server version: {detected_version}")
+            use_detected = input("Use this version? (Y/N): ").strip().upper()
+            if use_detected == "Y":
+                version = detected_version
+            else:
+                while True:
+                    version = input("\nEnter Minecraft server version (e.g., 1.21.5 or 1.21): ").strip()
+                    if re.match(r"^\d+\.\d+(\.\d+)?$", version):
+                        break
+                    print("Invalid version format. Use format like 1.21.5 or 1.21")
+        else:
+            while True:
+                version = input("\nEnter Minecraft server version (e.g., 1.21.5 or 1.21): ").strip()
+                if re.match(r"^\d+\.\d+(\.\d+)?$", version):
+                    break
+                print("Invalid version format. Use format like 1.21.5 or 1.21")
     
     while True:
         ram_input = input("\nSet maximum RAM (e.g., 4096 for 4GB, or 4 for 4GB): ").strip()
@@ -2880,7 +3031,6 @@ def init_config(prefill_version=None):
     print("\nYou can add additional files/directories to exclude from backups.")
     print("These will be added to the base exclusion list.")
     additional_exclude = input("Enter additional exclusions (comma-separated, leave empty if none): ").strip()
-    
     
     java_path = None
     while java_path is None:
@@ -2921,7 +3071,6 @@ def init_config(prefill_version=None):
             except ValueError:
                 print("Please enter a number.")
     
-    
     print("\nYou can add additional server parameters (e.g., -nogui, --force-upgrade, etc.)")
     print("These will be appended after the default parameters.")
     additional_params = input("Enter additional parameters (leave empty if none): ").strip()
@@ -2959,6 +3108,21 @@ def init_config_auto(prefill_version=None):
         if confirm != "Y":
             print("\nOperation canceled.\nExisting configuration preserved.\n")
             return
+
+    print("\nChecking for server core files...")
+    core_result = detect_server_cores()
+    
+    if core_result is True:
+        pass
+    elif isinstance(core_result, list) and len(core_result) > 0:
+        if not select_server_core(core_result, auto_mode=True):
+            print("Failed to auto-select server core.")
+            return
+    elif core_result is False:
+        print("No valid server cores found.")
+        print("Please make sure you have server JAR files in the current directory.")
+        print("The JAR files should contain a version.json file to be recognized as server cores.")
+        return
 
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     config = configparser.ConfigParser()
@@ -4612,7 +4776,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 51)
-    print("      Minecraft Server Management Tool (v5.2)")
+    print("      Minecraft Server Management Tool (v5.3)")
     print("=" * 51)
     print("")
     print("A comprehensive command-line tool for managing")
