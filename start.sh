@@ -3725,17 +3725,20 @@ def generate_crash_report(report_file, data, log_file, exit_code):
             f.write("\n" + "=" * 47 + "\n")
             f.write("                Recommendations\n")
             f.write("=" * 47 + "\n\n")
+            has_specific_issues = False
             if data['keywords_found'].get('Out of memory') or data['keywords_found'].get('OutOfMemoryError'):
                 f.write("OUT OF MEMORY DETECTED:\n")
                 f.write(" - Increase server RAM allocation\n")
                 f.write(" - Reduce view-distance in server.properties\n")
                 f.write(" - Install optimization plugins\n\n")
+                has_specific_issues = True
             if data['keywords_found'].get("Can't keep up"):
                 f.write("SERVER LAG DETECTED:\n")
                 f.write(" - Check CPU usage on your machine\n")
                 f.write(" - Reduce entity count in worlds\n")
                 f.write(" - Optimize redstone contraptions\n")
                 f.write(" - Install performance monitoring plugins\n\n")
+                has_specific_issues = True
             plugin_deps = data.get('plugin_dependencies', {})
             if plugin_deps and isinstance(plugin_deps, dict):
                 missing_hard = plugin_deps.get('missing_hard', {})
@@ -3743,12 +3746,14 @@ def generate_crash_report(report_file, data, log_file, exit_code):
                     f.write("MISSING PLUGIN DEPENDENCIES:\n")
                     f.write(" - Install the required dependencies\n")
                     f.write(" - Or disable the plugins that require them\n\n")
-            if not data['warn_errors'] and not data['keywords_found']:
+                    has_specific_issues = True
+            if not has_specific_issues:
                 f.write("No specific issues detected in logs.\n")
                 f.write("Consider checking:\n")
                 f.write(" - Server hardware resources\n")
                 f.write(" - Operating system logs\n")
                 f.write(" - Java version compatibility\n")
+                f.write(" - Environment compatibility\n")
                 f.write(" - World file corruption\n\n")
             f.write("=" * 47)
     except Exception as e:
