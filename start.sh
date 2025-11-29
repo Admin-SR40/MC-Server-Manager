@@ -4339,8 +4339,6 @@ def generate_crash_report(report_file, data, log_file, exit_code):
                 f.write(" - Java version compatibility\n")
                 f.write(" - World file corruption\n\n")
             
-            f.write("=" * 47 + "\n")
-            f.write("End of Crash Analysis Report\n")
             f.write("=" * 47)
         
     except Exception as e:
