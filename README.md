@@ -9,6 +9,7 @@ A powerful Minecraft server management tool written in Python, supporting Purpur
 - **One-Click Start**: Automatically configure and start Minecraft server
 - **Version Management**: Download, switch, and manage multiple server versions
 - **Auto Configuration**: Intelligent Java environment detection and configuration
+- **Server Crash Analysis**: Generate crash report when crash detected
 - **Automatic EULA**: Automatically handle Mojang EULA agreement
 - **Server Settings**: Interactive server configuration editor
 - **Player Management**: Manage banned players, IPs, and whitelist

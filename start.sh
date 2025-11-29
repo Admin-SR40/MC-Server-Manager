@@ -25,7 +25,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "5.3"
+SCRIPT_VERSION = "5.4"
 
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
@@ -4118,6 +4118,239 @@ def check_config_file():
         print(f"Debug: Config parsing error: {e}")
         return "missing_or_corrupted"
 
+def analyze_server_crash(exit_code):
+    print("\n" + "=" * 50)
+    print("                  Crash Detected")
+    print("=" * 50)
+    
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    report_file = BASE_DIR / f"crash_{timestamp}.txt"
+    log_file = BASE_DIR / "logs" / "latest.log"
+    
+    print(f"\nExit Code: {exit_code}")
+    print(f"Log File: {log_file}")
+    print(f"Report File: {report_file}")
+    
+    analysis_data = collect_crash_data(log_file, exit_code)
+    
+    generate_crash_report(report_file, analysis_data, log_file, exit_code)
+    
+    print(f"\nCrash analysis completed!")
+    print(f"Report generated: {report_file}")
+    print("\nPlease check the crash report for details about the server crash.\n")
+
+def collect_crash_data(log_file, exit_code):
+    data = {
+        'exit_code': exit_code,
+        'warn_errors': [],
+        'keywords_found': {},
+        'plugin_dependencies': {},
+        'log_lines': []
+    }
+    
+    if log_file.exists():
+        try:
+            with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
+                data['log_lines'] = f.readlines()
+        except Exception as e:
+            print(f"Warning: Could not read log file: {e}")
+            data['log_lines'] = []
+    
+    analyze_log_content(data)
+    
+    analyze_plugin_dependencies(data)
+    
+    return data
+
+def analyze_log_content(data):
+    log_lines = data['log_lines']
+    warn_errors = []
+    keywords = {
+        'Out of memory': [],
+        "Can't keep up": [],
+        'Exception': [],
+        'Error': [],
+        'Crash': [],
+        'Failed': [],
+        'Timeout': [],
+        'Deadlock': []
+    }
+    
+    for i, line in enumerate(log_lines):
+        line = line.strip()
+        if not line:
+            continue
+            
+        if '[WARN]' in line or '[ERROR]' in line:
+            context_lines = []
+            
+            start_idx = max(0, i - 2)
+            end_idx = min(len(log_lines), i + 3)
+            
+            for ctx_i in range(start_idx, end_idx):
+                if ctx_i < len(log_lines):
+                    context_lines.append({
+                        'line_number': ctx_i + 1,
+                        'content': log_lines[ctx_i].rstrip(),
+                        'is_target': ctx_i == i
+                    })
+            
+            warn_errors.append(context_lines)
+        
+        for keyword in keywords.keys():
+            if keyword.lower() in line.lower():
+                keywords[keyword].append(i + 1)
+    
+    data['warn_errors'] = warn_errors
+    data['keywords_found'] = {k: v for k, v in keywords.items() if v}
+
+def analyze_plugin_dependencies(data):
+    if not PLUGINS_DIR.exists():
+        return
+    
+    plugin_files = list(PLUGINS_DIR.glob("*.jar"))
+    if not plugin_files:
+        return
+    
+    enabled_plugins = []
+    for plugin_path in plugin_files:
+        if not plugin_path.name.endswith('.disabled'):
+            name, version, main_class = get_plugin_info(plugin_path)
+            enabled_plugins.append({
+                'path': plugin_path,
+                'name': name,
+                'version': version,
+                'main_class': main_class
+            })
+    
+    missing_hard_deps = {}
+    missing_soft_deps = {}
+    
+    for plugin in enabled_plugins:
+        dependencies = get_plugin_dependencies(plugin['path'])
+        
+        hard_deps_missing = []
+        for dep in dependencies['depend']:
+            if not is_plugin_enabled(dep, enabled_plugins):
+                hard_deps_missing.append(dep)
+        
+        soft_deps_missing = []
+        for dep in dependencies['softdepend']:
+            if not is_plugin_enabled(dep, enabled_plugins):
+                soft_deps_missing.append(dep)
+        
+        if hard_deps_missing:
+            missing_hard_deps[plugin['name']] = hard_deps_missing
+        if soft_deps_missing:
+            missing_soft_deps[plugin['name']] = soft_deps_missing
+    
+    data['plugin_dependencies'] = {
+        'missing_hard': missing_hard_deps,
+        'missing_soft': missing_soft_deps
+    }
+
+def is_plugin_enabled(plugin_name, enabled_plugins):
+    return any(plugin['name'].lower() == plugin_name.lower() for plugin in enabled_plugins)
+
+def generate_crash_report(report_file, data, log_file, exit_code):
+    try:
+        with open(report_file, 'w', encoding='utf-8') as f:
+            f.write("=" * 47 + "\n")
+            f.write("        Minecraft Server Crash Analysis\n")
+            f.write("=" * 47 + "\n\n")
+            
+            f.write("The server exited with unexpected return value\n\n")
+            
+            f.write(f"Report Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Returned Exit Code: {exit_code}\n")
+            f.write(f"Log Path: {log_file}\n")
+            f.write(f"Report Path: {report_file}\n\n")
+            
+            f.write("=" * 47 + "\n")
+            f.write("                    Summary\n")
+            f.write("=" * 47 + "\n\n")
+            
+            f.write(f"Found {len(data['warn_errors'])} WARN/ERROR entries in the log.\n")
+            f.write("Check WARN/ERROR entries with context:\n\n")
+            
+            f.write("=" * 47 + "\n\n")
+            
+            for i, context_block in enumerate(data['warn_errors'], 1):
+                f.write(f"Error Context #{i}:\n")
+                for ctx_line in context_block:
+                    marker = ">>" if ctx_line['is_target'] else "  "
+                    f.write(f"{marker} L{ctx_line['line_number']:4d}: {ctx_line['content']}\n")
+                f.write("\n")
+            
+            f.write("=" * 47 + "\n\n")
+            f.write("Found keywords in log:\n")
+            for keyword, lines in data['keywords_found'].items():
+                f.write(f"\n{keyword} at lines:\n")
+                for line_num in lines[:10]:
+                    f.write(f" - Line {line_num}\n")
+                if len(lines) > 10:
+                    f.write(f" - ... and {len(lines) - 10} more\n")
+            
+            plugin_deps = data['plugin_dependencies']
+            if plugin_deps['missing_hard'] or plugin_deps['missing_soft']:
+                f.write("\n" + "=" * 47 + "\n\n")
+                f.write("Plugin Dependency Issues:\n\n")
+                
+                for plugin_name, deps in plugin_deps['missing_hard'].items():
+                    f.write(f"Plugin '{plugin_name}' requires following hard dependencies but not installed:\n")
+                    for dep in deps:
+                        f.write(f" - {dep}\n")
+                    f.write("\n")
+                
+                for plugin_name, deps in plugin_deps['missing_soft'].items():
+                    f.write(f"Plugin '{plugin_name}' requires following soft dependencies but not installed:\n")
+                    for dep in deps:
+                        f.write(f" - {dep}\n")
+                    f.write("\n")
+            
+            f.write("=" * 47 + "\n")
+            f.write("                Recommendations\n")
+            f.write("=" * 47 + "\n\n")
+            
+            if data['keywords_found'].get('Out of memory'):
+                f.write("OUT OF MEMORY DETECTED:\n")
+                f.write(" - Increase server RAM allocation\n")
+                f.write(" - Reduce view-distance in server.properties\n")
+                f.write(" - Install optimization plugins\n")
+                f.write(" - Consider using Paper/Purpur for better performance\n\n")
+            
+            if data['keywords_found'].get("Can't keep up"):
+                f.write("SERVER LAG DETECTED:\n")
+                f.write(" - Check CPU usage on your machine\n")
+                f.write(" - Reduce entity count in worlds\n")
+                f.write(" - Optimize redstone contraptions\n")
+                f.write(" - Install performance monitoring plugins\n\n")
+            
+            if plugin_deps['missing_hard']:
+                f.write("MISSING PLUGIN DEPENDENCIES:\n")
+                f.write(" - Install the required dependencies\n")
+                f.write(" - Or disable the plugins that require them\n\n")
+            
+            if not data['warn_errors'] and not data['keywords_found']:
+                f.write("No specific issues detected in logs.\n")
+                f.write("Consider checking:\n")
+                f.write(" - Server hardware resources\n")
+                f.write(" - Operating system logs\n")
+                f.write(" - Java version compatibility\n")
+                f.write(" - World file corruption\n\n")
+            
+            f.write("=" * 47 + "\n")
+            f.write("End of Crash Analysis Report\n")
+            f.write("=" * 47)
+        
+    except Exception as e:
+        print(f"Error generating crash report: {e}\n")
+
+def handle_server_crash(process):
+    if process.returncode == 0:
+        return
+    analyze_server_crash(process.returncode)
+
 def start_server():
     config_check_result = check_config_file()
     if config_check_result == "missing_or_corrupted":
@@ -4209,12 +4442,24 @@ def start_server():
             print(line, end="")
         
         process.wait()
-        print("\nServer stopped.\n")
+        
+        if process.returncode != 0:
+            handle_server_crash(process)
+        else:
+            print("\nServer stopped normally.\n")
         
     except KeyboardInterrupt:
         print("\nServer shutdown requested by user.\n")
+        if process:
+            process.terminate()
+            process.wait()
     except Exception as e:
         print(f"Error starting server: {e}\n")
+        if process and process.poll() is None:
+            process.terminate()
+            process.wait()
+        if process:
+            handle_server_crash(process)
 
 def format_backup_name(filename, version):
     if filename == "server.zip":
@@ -4776,7 +5021,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 51)
-    print("      Minecraft Server Management Tool (v5.3)")
+    print("      Minecraft Server Management Tool (v5.4)")
     print("=" * 51)
     print("")
     print("A comprehensive command-line tool for managing")
