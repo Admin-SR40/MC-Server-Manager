@@ -25,7 +25,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "5.5"
+SCRIPT_VERSION = "5.6"
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
 BUNDLES_DIR = BASE_DIR / "bundles"
@@ -2826,43 +2826,6 @@ def find_java_installations():
         "C:\\jdk*\\bin\\java.exe",
         "C:\\jre*\\bin\\java.exe",
     ]
-    def parse_java_version(output):
-        lines = output.strip().split('\n')
-        if not lines:
-            return "Unknown", "Unknown"
-        first_line = lines[0]
-        version_match = re.search(r'version\s+"([^"]+)"', first_line)
-        if not version_match:
-            version_match = re.search(r'(\d+\.\d+\.\d+|\d+)', first_line)
-        version = "Unknown"
-        if version_match:
-            version_str = version_match.group(1)
-            if version_str.startswith('1.'):
-                parts = version_str.split('.')
-                if len(parts) >= 2:
-                    version = parts[1]
-            else:
-                major_match = re.search(r'^(\d+)', version_str)
-                if major_match:
-                    version = major_match.group(1)
-        vendor = "Unknown"
-        if len(lines) > 1:
-            second_line = lines[1]
-            if "OpenJDK" in second_line:
-                vendor = "OpenJDK"
-            elif "GraalVM" in second_line:
-                vendor = "GraalVM"
-            elif "Java(TM) SE" in second_line:
-                vendor = "Oracle JDK"
-            elif "Eclipse Temurin" in second_line:
-                vendor = "Temurin"
-            elif "Zulu" in second_line:
-                vendor = "Zulu"
-            elif "Microsoft" in second_line:
-                vendor = "Microsoft"
-            elif "Amazon Corretto" in second_line:
-                vendor = "Corretto"
-        return version, vendor
     for path in search_paths:
         for match in glob.glob(path):
             if os.path.exists(match) and os.access(match, os.X_OK):
@@ -2877,6 +2840,7 @@ def find_java_installations():
                     )
                     output = result.stderr or result.stdout
                     if "java version" in output or "openjdk version" in output:
+                        # 使用外部的 parse_java_version 函数
                         version, vendor = parse_java_version(output)
                         java_installations.append({
                             'path': real_path,
@@ -2969,6 +2933,44 @@ def find_java_installations():
             return -1
     unique_installations.sort(key=version_key, reverse=True)
     return unique_installations
+
+def parse_java_version(output):
+    lines = output.strip().split('\n')
+    if not lines:
+        return "Unknown", "Unknown"
+    first_line = lines[0]
+    version_match = re.search(r'version\s+"([^"]+)"', first_line)
+    if not version_match:
+        version_match = re.search(r'(\d+\.\d+\.\d+|\d+)', first_line)
+    version = "Unknown"
+    if version_match:
+        version_str = version_match.group(1)
+        if version_str.startswith('1.'):
+            parts = version_str.split('.')
+            if len(parts) >= 2:
+                version = parts[1]
+        else:
+            major_match = re.search(r'^(\d+)', version_str)
+            if major_match:
+                version = major_match.group(1)
+    vendor = "Unknown"
+    if len(lines) > 1:
+        second_line = lines[1]
+        if "OpenJDK" in second_line:
+            vendor = "OpenJDK"
+        elif "GraalVM" in second_line:
+            vendor = "GraalVM"
+        elif "Java(TM) SE" in second_line:
+            vendor = "Oracle JDK"
+        elif "Eclipse Temurin" in second_line:
+            vendor = "Temurin"
+        elif "Zulu" in second_line:
+            vendor = "Zulu"
+        elif "Microsoft" in second_line:
+            vendor = "Microsoft"
+        elif "Amazon Corretto" in second_line:
+            vendor = "Corretto"
+    return version, vendor
 
 def load_config():
     if not CONFIG_FILE.exists():
@@ -3659,6 +3661,109 @@ def analyze_plugin_dependencies(data):
 def is_plugin_enabled(plugin_name, enabled_plugins):
     return any(plugin['name'].lower() == plugin_name.lower() for plugin in enabled_plugins)
 
+def get_environment_info():
+    info = {}
+    info['os_name'] = platform.system()
+    info['os_version'] = platform.release()
+    try:
+        if platform.system() == "Windows":
+            info['cpu_info'] = platform.processor()
+        elif platform.system() == "Darwin":
+            info['cpu_info'] = platform.processor()
+        elif platform.system() == "Linux":
+            try:
+                with open('/proc/cpuinfo', 'r') as f:
+                    for line in f:
+                        if line.strip().startswith('model name'):
+                            info['cpu_info'] = line.split(':')[1].strip()
+                            break
+                    else:
+                        info['cpu_info'] = platform.processor()
+            except:
+                info['cpu_info'] = platform.processor()
+        else:
+            info['cpu_info'] = platform.processor()
+    except:
+        info['cpu_info'] = "Unknown"
+    try:
+        config = load_config()
+        java_path = config.get("java_path", "Not set")
+        info['java_path'] = java_path
+        try:
+            result = subprocess.run(
+                [java_path, "-version"],
+                stderr=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                text=True,
+                timeout=5
+            )
+            output = result.stderr or result.stdout
+            version, vendor = parse_java_version(output)
+            info['java_version'] = version
+            info['java_vendor'] = vendor
+        except:
+            info['java_version'] = "Unknown"
+            info['java_vendor'] = "Unknown"
+    except:
+        info['java_path'] = "Not configured"
+        info['java_version'] = "Unknown"
+        info['java_vendor'] = "Unknown"
+    try:
+        config = load_config()
+        max_ram_mb = config.get("max_ram", "Unknown")
+        if max_ram_mb != "Unknown":
+            max_ram_gb = int(max_ram_mb) / 1024
+            total_mem_bytes = get_total_memory()
+            total_mem_gb = total_mem_bytes / (1024 ** 3)
+            if total_mem_gb > 0:
+                allocation_percent = (max_ram_gb / total_mem_gb) * 100
+                info['allocated_ram'] = f"{max_ram_gb:.1f}GB ({allocation_percent:.0f}%)"
+            else:
+                info['allocated_ram'] = f"{max_ram_gb:.1f}GB"
+        else:
+            info['allocated_ram'] = "Unknown"
+    except:
+        info['allocated_ram'] = "Unknown"
+    try:
+        config = load_config()
+        info['game_version'] = config.get("version", "Unknown")
+    except:
+        info['game_version'] = "Unknown"
+    try:
+        if SERVER_PROPERTIES.exists():
+            with open(SERVER_PROPERTIES, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.strip().startswith('server-port='):
+                        info['server_port'] = line.split('=')[1].strip()
+                        break
+                else:
+                    info['server_port'] = "25565 (default)"
+        else:
+            info['server_port'] = "25565 (default)"
+    except:
+        info['server_port'] = "Unknown"
+    if is_running_in_container():
+        container_mem = get_container_memory_limit()
+        if container_mem:
+            container_mem_gb = container_mem / (1024 ** 3)
+            info['container_info'] = f"Yes ({container_mem_gb:.1f}GB limit)"
+        else:
+            info['container_info'] = "Yes"
+    else:
+        info['container_info'] = "No"
+    try:
+        config = load_config()
+        info['device_id'] = config.get("device", get_device_id())[:12] + "..."
+    except:
+        info['device_id'] = get_device_id()[:12] + "..."
+    try:
+        config = load_config()
+        additional_params = config.get("additional_parameters", "").strip()
+        info['additional_params'] = additional_params if additional_params else "None"
+    except:
+        info['additional_params'] = "None"
+    return info
+
 def generate_crash_report(report_file, data, log_file, exit_code):
     try:
         with open(report_file, 'w', encoding='utf-8') as f:
@@ -3682,10 +3787,33 @@ def generate_crash_report(report_file, data, log_file, exit_code):
             f.write(f"Log Path: {log_file}\n")
             f.write(f"Report Path: {report_file}\n\n")
             f.write("=" * 47 + "\n")
+            f.write("            Environment Information\n")
+            f.write("=" * 47 + "\n\n")
+            system_info = get_environment_info()
+            env_items = [
+                ("System", f"{system_info['os_name']} {system_info['os_version']}"),
+                ("CPU", system_info['cpu_info']),
+                ("Architecture", platform.machine()),
+                ("Allocated RAM", system_info['allocated_ram']),
+                ("Java", f"{system_info['java_version']} ({system_info['java_vendor']})"),
+                ("Java Path", system_info['java_path']),
+                ("Game Version", system_info['game_version']),
+                ("Server Port", system_info['server_port']),
+                ("Container", system_info['container_info']),
+                ("Python Version", platform.python_version()),
+                ("Script Version", SCRIPT_VERSION),
+                ("Device ID", system_info['device_id']),
+                ("Additional Parameters", system_info['additional_params'])
+            ]
+            for key, value in env_items:
+                if value:
+                    f.write(f"{key}: {value}\n")
+            f.write("\n")
+            f.write("=" * 47 + "\n")
             f.write("                    Summary\n")
             f.write("=" * 47 + "\n\n")
             f.write(f"Found {len(data['warn_errors'])} error contexts in the log.\n")
-            f.write("Error contexts with adjacent errors grouped together:\n\n")
+            f.write("Error contexts are listed below:\n\n")
             f.write("=" * 47 + "\n\n")
             for i, context_block in enumerate(data['warn_errors'], 1):
                 f.write(f"Error Context #{i}:\n")
@@ -4421,7 +4549,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 51)
-    print("      Minecraft Server Management Tool (v5.5)")
+    print("      Minecraft Server Management Tool (v5.6)")
     print("=" * 51)
     print("")
     print("A comprehensive command-line tool for managing")
