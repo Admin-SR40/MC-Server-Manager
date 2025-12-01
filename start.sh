@@ -17,6 +17,7 @@ import fnmatch
 import hashlib
 import socket
 import uuid
+import time
 from pathlib import Path
 
 try:
@@ -25,7 +26,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "5.6"
+SCRIPT_VERSION = "5.7"
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
 BUNDLES_DIR = BASE_DIR / "bundles"
@@ -1103,7 +1104,7 @@ def check_and_accept_eula():
             f.write(f"#{datetime.datetime.now().strftime('%a %b %d %H:%M:%S %Z %Y')}\n")
             f.write("eula=true\n")
         print("EULA file not found. Created and accepted EULA automatically.")
-        print("By using this server, you agree to Mojang's EULA (https://aka.ms/MinecraftEULA)")
+        print("By using this server, you agree to Mojang's EULA (https://aka.ms/MinecraftEULA)\n")
         return True
     eula_accepted = False
     try:
@@ -1126,7 +1127,7 @@ def check_and_accept_eula():
             with open(EULA_FILE, 'w') as f:
                 f.write(content)
             print("EULA not accepted. Automatically accepted EULA.")
-            print("By using this server, you agree to Mojang's EULA (https://aka.ms/MinecraftEULA)")
+            print("By using this server, you agree to Mojang's EULA (https://aka.ms/MinecraftEULA)\n")
             return True
         except Exception as e:
             print(f"Error updating EULA file: {e}")
@@ -1483,12 +1484,12 @@ def import_world():
                             with zipf.open(name) as source, open(target_path, 'wb') as target:
                                 shutil.copyfileobj(source, target)
                 if (world_path / "level.dat").exists():
-                    print(f"✓ Imported: {world_name}")
+                    print(f" - Imported: {world_name}")
                     extracted_count += 1
                 else:
-                    print(f"✗ Invalid world (missing level.dat): {world_name}")
+                    print(f" - Invalid world (missing level.dat): {world_name}")
                     shutil.rmtree(world_path)
-            print(f"\nSuccessfully imported {extracted_count} world(s).")
+            print(f"\nSuccessfully imported {extracted_count} world(s).\n")
             print("")
     except zipfile.BadZipFile:
         print("Error: The file is not a valid ZIP archive.\n")
@@ -2651,16 +2652,12 @@ def init_config(prefill_version=None):
     show_info()
 
 def init_config_auto(prefill_version=None):
+    start_time = time.time()
     print("=" * 50)
     print("         Automatic Server Initialization")
     print("=" * 50)
     if CONFIG_FILE.exists():
-        print("\nConfiguration file already exists!")
-        print("This will replace your current configuration.")
-        confirm = input("\nDo you want to continue? (Y/N): ").strip().upper()
-        if confirm != "Y":
-            print("\nOperation canceled.\nExisting configuration preserved.\n")
-            return
+        print("\nConfiguration file already exists. Overwriting...")
     print("\nChecking for server core files...")
     core_result = detect_server_cores()
     if core_result is True:
@@ -2803,7 +2800,8 @@ def init_config_auto(prefill_version=None):
         config.write(f)
     print(f"\nAuto configuration saved to {CONFIG_FILE}")
     show_info()
-    print("Auto initialization complete.\n")
+    elapsed_time = time.time() - start_time
+    print(f"Auto initialization completed in {elapsed_time:.2f}s!\n")
 
 def find_java_installations():
     java_installations = []
@@ -3507,6 +3505,7 @@ def check_config_file():
         return "missing_or_corrupted"
 
 def analyze_server_crash(exit_code):
+    start_time = time.time()
     print("\n" + "=" * 50)
     if exit_code == 0:
         print("        POTENTIAL CRASH DETECTED FROM LOGS")
@@ -3529,6 +3528,8 @@ def analyze_server_crash(exit_code):
         print("The server exited with code 0 but showed error indicators.\n")
     else:
         print("\nPlease check the crash report for details about the server crash.\n")
+    elapsed_time = time.time() - start_time
+    print(f"Crash analysis completed in {elapsed_time:.2f}s!\n")
 
 def collect_crash_data(log_file, exit_code):
     data = {
@@ -3769,9 +3770,9 @@ def generate_crash_report(report_file, data, log_file, exit_code):
         with open(report_file, 'w', encoding='utf-8') as f:
             f.write("=" * 47 + "\n")
             if exit_code == -1:
-                f.write("      SERVER INTERRUPTED - CRASH ANALYSIS\n")
+                f.write("      Server Interrupted - Crash Analysis\n")
             elif exit_code == 0:
-                f.write("      POTENTIAL CRASH DETECTED FROM LOGS\n")
+                f.write("       Potential Crash Detected From Logs\n")
             else:
                 f.write("        Minecraft Server Crash Analysis\n")
             f.write("=" * 47 + "\n\n")
@@ -3834,22 +3835,23 @@ def generate_crash_report(report_file, data, log_file, exit_code):
                 missing_hard = plugin_deps.get('missing_hard', {})
                 missing_soft = plugin_deps.get('missing_soft', {})
                 if missing_hard or missing_soft:
-                    f.write("\n" + "=" * 47 + "\n\n")
-                    f.write("Plugin Dependency Issues:\n\n")
+                    f.write("\n" + "=" * 47 + "\n")
+                    f.write("            Plugin Dependency Issues\n")
+                    f.write("=" * 47 + "\n")
                     if missing_hard and isinstance(missing_hard, dict):
+                        f.write("\nMissing Hard Dependencies:\n")
                         for plugin_name, deps in missing_hard.items():
                             if isinstance(deps, list):
-                                f.write(f"Plugin '{plugin_name}' requires following hard dependencies but not installed:\n")
+                                f.write(f"\nPlugin '{plugin_name}' requires:\n")
                                 for dep in deps:
                                     f.write(f" - {dep}\n")
-                                f.write("\n")
                     if missing_soft and isinstance(missing_soft, dict):
+                        f.write("\nMissing Soft Dependencies:\n")
                         for plugin_name, deps in missing_soft.items():
                             if isinstance(deps, list):
-                                f.write(f"Plugin '{plugin_name}' requires following soft dependencies but not installed:\n")
+                                f.write(f"\nPlugin '{plugin_name}' suggests:\n")
                                 for dep in deps:
                                     f.write(f" - {dep}\n")
-                                f.write("\n")
             f.write("\n" + "=" * 47 + "\n")
             f.write("                Recommendations\n")
             f.write("=" * 47 + "\n\n")
@@ -3940,7 +3942,7 @@ def ask_user_for_crash_analysis():
         if choice == 'Y':
             return True
         elif choice == 'N':
-            print("\nContinuing without analysis...\n")
+            print("\nContinuing without analysis...")
             return False
         else:
             print("Please enter Y or N.")
@@ -3972,7 +3974,7 @@ def ask_user_for_interrupt_analysis():
         if choice == 'Y':
             return True
         elif choice == 'N':
-            print("\nContinuing without analysis...\n")
+            print("\nContinuing without analysis...")
             return False
         else:
             print("Please enter Y or N.")
@@ -4031,7 +4033,6 @@ def start_server():
     if additional_params:
         additional_args = additional_params.split()
         command.extend(additional_args)
-    print("")
     print("=" * 50)
     print("Starting Minecraft server...")
     print("")
@@ -4549,7 +4550,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 51)
-    print("      Minecraft Server Management Tool (v5.6)")
+    print("      Minecraft Server Management Tool (v5.7)")
     print("=" * 51)
     print("")
     print("A comprehensive command-line tool for managing")
