@@ -26,7 +26,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "5.7"
+SCRIPT_VERSION = "5.8"
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
 BUNDLES_DIR = BASE_DIR / "bundles"
