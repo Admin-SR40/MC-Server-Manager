@@ -1232,69 +1232,6 @@ def manage_worlds():
     finally:
         remove_lock()
 
-def backup_worlds(world_info):
-    try:
-        config = load_config()
-        current_version = config.get("version", "unknown")
-    except:
-        print("Error: Could not determine current server version for backup.\n")
-        return
-    selection = input("\nSelect world folders to backup (space-separated numbers, 0 for all): ").strip()
-    if not selection:
-        print("No selection made. Operation canceled.\n")
-        return
-    selected_indices = []
-    for num_str in selection.split():
-        try:
-            num = int(num_str)
-            if 0 <= num <= len(world_info):
-                selected_indices.append(num)
-            else:
-                print(f"Invalid number: {num}")
-                return
-        except ValueError:
-            print(f"Invalid input: {num_str}")
-            return
-    if 0 in selected_indices:
-        worlds_to_backup = [world_info[i][0] for i in range(len(world_info))]
-        print("\nYou have selected ALL worlds to backup:")
-    else:
-        worlds_to_backup = [world_info[i - 1][0] for i in selected_indices]
-        print("\nYou have selected the following world(s) to backup:")
-    for w in worlds_to_backup:
-        print(f" - {w.name}")
-    confirm = input("\nProceed with backup? (Y/N): ").strip().upper()
-    if confirm != "Y":
-        print("Operation canceled.\n")
-        return
-    backup_dir = BUNDLES_DIR / current_version / "worlds"
-    backup_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_filename = f"worlds_{timestamp}.zip"
-    backup_path = backup_dir / backup_filename
-    print(f"\nCreating backup: {backup_path}")
-    try:
-        with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for world_folder in worlds_to_backup:
-                if not world_folder.exists():
-                    print(f"Warning: World folder {world_folder.name} does not exist, skipping.")
-                    continue
-                print(f"Adding: {world_folder.name}")
-                for root, _, files in os.walk(world_folder):
-                    for file in files:
-                        file_path = os.path.join(root, file)
-                        arcname = os.path.join(world_folder.name, os.path.relpath(file_path, world_folder))
-                        zipf.write(file_path, arcname)
-        file_size = os.path.getsize(backup_path)
-        print(f"\nBackup created successfully: {backup_path}")
-        print(f"File size: {format_file_size(file_size)}")
-        print(f"Worlds backed up: {len(worlds_to_backup)}")
-        print("")
-    except Exception as e:
-        print(f"Error creating backup: {e}\n")
-        if backup_path.exists():
-            backup_path.unlink()
-
 def delete_worlds(world_info):
     try:
         selection = input("\nSelect world folders to delete (space-separated numbers, 0 for all): ").strip()
@@ -1388,7 +1325,7 @@ def backup_worlds(world_info):
     if confirm != "Y":
         print("Operation canceled.\n")
         return
-    backup_dir = BUNDLES_DIR / current_version
+    backup_dir = BUNDLES_DIR / current_version / "worlds"
     backup_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_filename = f"worlds_{timestamp}.zip"
@@ -1839,6 +1776,7 @@ Description:
                 print(f"\nDownloading from {download_url}...")
                 print("This may take a while depending on your network speed.")
                 print("Press CTRL+C to cancel the download.\n")
+                start_time = time.time()
                 target_dir.mkdir(parents=True, exist_ok=True)
                 temp_jar = target_dir / "temp_core.jar"
                 try:
@@ -1849,6 +1787,11 @@ Description:
                                 if not chunk:
                                     break
                                 f.write(chunk)
+                    elapsed_time = time.time() - start_time
+                    file_size = os.path.getsize(temp_jar)
+                    download_speed = file_size / elapsed_time / 1024
+                    print(f"Download completed in {elapsed_time:.2f} seconds.")
+                    print(f"Download speed: {download_speed:.2f} KB/s")
                     expected_md5 = build_data.get("md5")
                     if expected_md5:
                         print("Verifying file integrity...")
@@ -1879,7 +1822,8 @@ Description:
                     temp_jar.unlink()
                     print(f"Successfully downloaded {version} (build {successful_build}) to {zip_path}\n")
                 except KeyboardInterrupt:
-                    print("\nDownload canceled by user.\n")
+                    elapsed_time = time.time() - start_time
+                    print(f"\nDownload canceled after {elapsed_time:.2f} seconds.\n")
                     if temp_jar.exists():
                         temp_jar.unlink()
                     if zip_path.exists():
@@ -4481,8 +4425,15 @@ def download_latest_version():
         latest_version = update_info.get("latest_version", "Unknown")
         if not expected_md5:
             print("Warning: Could not verify file integrity - no MD5 hash available.")
+        print("\nDownload started...")
+        start_time = time.time()
         with urllib.request.urlopen(script_url, timeout=30) as response:
             script_content = response.read()
+        elapsed_time = time.time() - start_time
+        file_size = len(script_content)
+        download_speed = file_size / elapsed_time / 1024
+        print(f"\nDownload completed in {elapsed_time:.2f} seconds.")
+        print(f"Download speed: {download_speed:.2f} KB/s\n")
         if expected_md5:
             print("Verifying file integrity...")
             file_hash = hashlib.md5()
@@ -4550,7 +4501,7 @@ def download_latest_version():
 
 def show_help():
     print("=" * 51)
-    print("      Minecraft Server Management Tool (v5.7)")
+    print(f"      Minecraft Server Management Tool (v{SCRIPT_VERSION})")
     print("=" * 51)
     print("")
     print("A comprehensive command-line tool for managing")
