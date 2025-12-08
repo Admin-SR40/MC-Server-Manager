@@ -26,7 +26,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "5.8"
+SCRIPT_VERSION = "5.9"
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
 BUNDLES_DIR = BASE_DIR / "bundles"
@@ -773,43 +773,6 @@ def add_to_list(items, list_type, file_path):
         print(f"\nSuccessfully added to {list_type}!\n")
     except Exception as e:
         print(f"Error saving {list_type}: {e}\n")
-
-def delete_from_list(items, list_type, file_path):
-    if not items:
-        print(f"\n{list_type} is empty. Nothing to delete.\n")
-        return
-    print(f"\nDeleting from {list_type}...")
-    try:
-        selection = input("Enter the number(s) to delete (space-separated): ").strip()
-        if not selection:
-            print("Operation cancelled.\n")
-            return
-        indices = [int(i.strip()) for i in selection.split()]
-        indices.sort(reverse=True)
-        valid_indices = [i for i in indices if 1 <= i <= len(items)]
-        if not valid_indices:
-            print("No valid numbers selected.\n")
-            return
-        print("\nThe following entries will be deleted:")
-        for idx in valid_indices:
-            item = items[idx-1]
-            if list_type == "banned-ips":
-                print(f" - IP: {item.get('ip', 'Unknown')}")
-            else:
-                print(f" - {item.get('name', 'Unknown')} ({item.get('uuid', 'Unknown')})")
-        confirm = input("\nAre you sure? (Y/N): ").strip().upper()
-        if confirm != 'Y':
-            print("Deletion cancelled.\n")
-            return
-        for idx in valid_indices:
-            del items[idx-1]
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(items, f, indent=2, ensure_ascii=False)
-        print(f"\nSuccessfully deleted {len(valid_indices)} entries from {list_type}!\n")
-    except ValueError:
-        print("Invalid input. Please enter numbers separated by spaces.\n")
-    except Exception as e:
-        print(f"Error deleting from {list_type}: {e}\n")
 
 def create_lock(command):
     try:
@@ -2628,9 +2591,10 @@ def init_config_auto(prefill_version=None):
         except Exception:
             version = "unknown"
             java_required = 8
+    if version != "unknown":
+        print(f"\nUsing detected version from core.jar: {version}")
     else:
-        java_required = 8
-    print(f"\nDetected version: {version}")
+        print(f"\nCould not detect version from core.jar, using: {version}")
     print(f"Required Java version: {java_required}")
     java_installations = find_java_installations()
     available_versions = [int(j['version']) for j in java_installations if j['version'].isdigit()]
@@ -2729,7 +2693,6 @@ def init_config_auto(prefill_version=None):
     print(f" - Total: {total_allocated_mb:.1f} MB")
     total_allocated_mb = validate_memory_allocation(total_mem_mb, total_allocated_mb, is_container)
     final_ram_mb = int(total_allocated_mb)
-    final_ram_mb = int(total_allocated_mb)
     print(f"\nFinal allocated RAM: {final_ram_mb} MB ({final_ram_mb/1024:.1f} GB)")
     device_id = get_device_id()
     config["SERVER"] = {
@@ -2782,7 +2745,6 @@ def find_java_installations():
                     )
                     output = result.stderr or result.stdout
                     if "java version" in output or "openjdk version" in output:
-                        # 使用外部的 parse_java_version 函数
                         version, vendor = parse_java_version(output)
                         java_installations.append({
                             'path': real_path,
@@ -3602,6 +3564,107 @@ def analyze_plugin_dependencies(data):
             'missing_hard': {},
             'missing_soft': {}
         }
+
+def analyze_plugin_dependencies_cli():
+    print("\n" + "=" * 52)
+    print("             Plugin Dependency Analysis")
+    print("=" * 52)
+    if not PLUGINS_DIR.exists():
+        print("\nPlugins directory not found!")
+        print("")
+        return
+    plugin_files = list(PLUGINS_DIR.glob("*.jar")) + list(PLUGINS_DIR.glob("*.jar.disabled"))
+    if not plugin_files:
+        print("\nNo plugins found!")
+        print("")
+        return
+    all_plugins = []
+    for plugin_path in plugin_files:
+        name, version, main_class = get_plugin_info(plugin_path)
+        enabled = not plugin_path.name.endswith('.disabled')
+        dependencies = get_plugin_dependencies(plugin_path)
+        all_plugins.append({
+            'path': plugin_path,
+            'name': name,
+            'version': version,
+            'enabled': enabled,
+            'dependencies': dependencies
+        })
+    installed_plugin_names = {plugin['name'].lower() for plugin in all_plugins}
+    enabled_plugin_names = {plugin['name'].lower() for plugin in all_plugins if plugin['enabled']}
+    found_issues = False
+    for plugin in all_plugins:
+        if not plugin['enabled']:
+            continue
+        plugin_name = plugin['name']
+        dependencies = plugin['dependencies']
+        hard_deps = dependencies.get('depend', [])
+        soft_deps = dependencies.get('softdepend', [])
+        hard_dep_not_installed = []
+        hard_dep_not_enabled = []
+        for dep in hard_deps:
+            dep_lower = dep.lower()
+            if dep_lower not in installed_plugin_names:
+                hard_dep_not_installed.append(dep)
+            elif dep_lower not in enabled_plugin_names:
+                disabled_dep = next((p for p in all_plugins if p['name'].lower() == dep_lower and not p['enabled']), None)
+                if disabled_dep:
+                    hard_dep_not_enabled.append(dep)
+        soft_dep_not_installed = []
+        soft_dep_not_enabled = []
+        for dep in soft_deps:
+            dep_lower = dep.lower()
+            if dep_lower not in installed_plugin_names:
+                soft_dep_not_installed.append(dep)
+            elif dep_lower not in enabled_plugin_names:
+                disabled_dep = next((p for p in all_plugins if p['name'].lower() == dep_lower and not p['enabled']), None)
+                if disabled_dep:
+                    soft_dep_not_enabled.append(dep)
+        if soft_dep_not_installed:
+            found_issues = True
+            print(f"\nPlugin '{plugin_name}' requires following soft dependencies but not installed:")
+            for dep in soft_dep_not_installed:
+                print(f" - {dep}")
+        if soft_dep_not_enabled:
+            found_issues = True
+            print(f"\nPlugin '{plugin_name}' requires following soft dependencies but not enabled:")
+            for dep in soft_dep_not_enabled:
+                print(f" - {dep}")
+        if hard_dep_not_installed:
+            found_issues = True
+            print(f"\nPlugin '{plugin_name}' requires following hard dependencies but not installed:")
+            for dep in hard_dep_not_installed:
+                print(f" - {dep}")
+        if hard_dep_not_enabled:
+            found_issues = True
+            print(f"\nPlugin '{plugin_name}' requires following hard dependencies but not enabled:")
+            for dep in hard_dep_not_enabled:
+                print(f" - {dep}")
+    if not found_issues:
+        print("\nAll plugin dependencies are satisfied!")
+        print("No missing or disabled dependencies found.")
+    disabled_plugins = [p for p in all_plugins if not p['enabled']]
+    if disabled_plugins:
+        print("\n" + "=" * 50)
+        print("Currently Disabled Plugins:")
+        print("=" * 50)
+        for plugin in disabled_plugins:
+            print(f" - {plugin['name']} (version: {plugin['version']})")
+    enabled_count = len([p for p in all_plugins if p['enabled']])
+    disabled_count = len([p for p in all_plugins if not p['enabled']])
+    total_hard_deps = sum(len(p['dependencies'].get('depend', [])) for p in all_plugins if p['enabled'])
+    total_soft_deps = sum(len(p['dependencies'].get('softdepend', [])) for p in all_plugins if p['enabled'])
+    print("\nYou can ignore soft dependencies if not critical.")
+    print("You should never ignore missing hard dependencies!")
+    print(f"\n" + "=" * 52)
+    print("Statistics:")
+    print(f" - Total plugins: {len(all_plugins)}")
+    print(f" - Enabled plugins: {enabled_count}")
+    print(f" - Disabled plugins: {disabled_count}")
+    print(f" - Total hard dependencies: {total_hard_deps}")
+    print(f" - Total soft dependencies: {total_soft_deps}")
+    print("=" * 52)
+    print("")
 
 def is_plugin_enabled(plugin_name, enabled_plugins):
     return any(plugin['name'].lower() == plugin_name.lower() for plugin in enabled_plugins)
@@ -4512,27 +4575,27 @@ def show_help():
     print(f"  {SCRIPT_NAME} [command] [options]")
     print("")
     print("Commands:")
-    print("  (no command)      Start the server")
-    print("  --init            Initialize new server configuration")
-    print("  --info            Show current server configuration")
-    print("  --list            List all available versions")
-    print("  --plugins         Show installed plugins and toggle them")
-    print("  --save <ver>      Save current version to bundles")
-    print("  --backup          Create timestamped backup of current version")
-    print("  --worlds          Manage worlds with multiple options")
-    print("  --get <ver>       Fetch a Purpur server info and download")
-    print("  --new             Save current server and create a new one")
-    print("  --rollback        Rollback to a previous backup")
-    print("  --delete <ver>    Delete specified version from bundles")
-    print("  --change <ver>    Switch to specified version")
-    print("  --upgrade         Upgrade server core to compatible version")
-    print("  --cleanup         Clean up server files to free up space")
-    print("  --dump            Create a compressed dump of log files")
-    print("  --settings        Edit server properties and settings")
-    print("  --players         Manage banned players, IPs, and whitelist")
-    print("  --version         Check for script updates and update if available")
-    print("  --license         Show the open source license for this tool")
-    print("  --help            Show this help message")
+    print("  (no command)           Start the server")
+    print("  --init [auto]          Initialize new server configuration")
+    print("  --info                 Show current server configuration")
+    print("  --list                 List all available versions")
+    print("  --plugins [analyze]    Show installed plugins and toggle them")
+    print("  --save <ver>           Save current version to bundles")
+    print("  --backup               Create timestamped backup of current version")
+    print("  --worlds               Manage worlds with multiple options")
+    print("  --get [ver]            Fetch a Purpur server info and download")
+    print("  --new                  Save current server and create a new one")
+    print("  --rollback             Rollback to a previous backup")
+    print("  --delete <ver>         Delete specified version from bundles")
+    print("  --change <ver>         Switch to specified version")
+    print("  --upgrade [force]      Upgrade server core to compatible version")
+    print("  --cleanup              Clean up server files to free up space")
+    print("  --dump [keyword]       Create a compressed dump of log files")
+    print("  --settings             Edit server properties and settings")
+    print("  --players              Manage banned players, IPs, and whitelist")
+    print("  --version [force]      Check for script updates and update if available")
+    print("  --license              Show the open source license for this tool")
+    print("  --help                 Show this help message")
     print("")
 
 clear_screen()
@@ -4567,6 +4630,8 @@ def main():
         cleanup_files()
     elif sys.argv[1] == "--dump":
         dump_logs()
+    elif sys.argv[1] == "--plugins" and len(sys.argv) > 2 and sys.argv[2] == "analyze":
+        analyze_plugin_dependencies_cli()
     elif sys.argv[1] == "--plugins":
         manage_plugins_with_dependencies()
     elif sys.argv[1] == "--rollback":
