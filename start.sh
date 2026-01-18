@@ -26,7 +26,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "6.0"
+SCRIPT_VERSION = "6.1"
 SERVER_START_TIME = None
 SERVER_END_TIME = None
 BASE_DIR = Path(os.getcwd())
@@ -2611,6 +2611,7 @@ def init_config_auto(prefill_version=None):
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     config = configparser.ConfigParser()
     version = prefill_version
+    java_required = 8
     if not version and SERVER_JAR.exists():
         try:
             with zipfile.ZipFile(SERVER_JAR, 'r') as jar:
@@ -2620,6 +2621,14 @@ def init_config_auto(prefill_version=None):
                     java_required = int(data.get("java_version", 8))
         except Exception:
             version = "unknown"
+            java_required = 8
+    elif version and SERVER_JAR.exists():
+        try:
+            with zipfile.ZipFile(SERVER_JAR, 'r') as jar:
+                with jar.open('version.json') as f:
+                    data = json.load(f)
+                    java_required = int(data.get("java_version", 8))
+        except Exception:
             java_required = 8
     if version != "unknown":
         print(f"\nUsing detected version from core.jar: {version}")
@@ -3865,7 +3874,7 @@ def generate_crash_report(report_file, data, log_file, exit_code, uptime_str=Non
             for i, context_block in enumerate(data['warn_errors'], 1):
                 f.write(f"Error Context #{i}:\n")
                 for ctx_line in context_block:
-                    marker = ">> " if ctx_line['is_target'] else "   "
+                    marker = " >>" if ctx_line['is_target'] else "   "
                     f.write(f"{marker} Line{ctx_line['line_number']:4d}: {ctx_line['content']}\n")
                 f.write("\n")
             f.write("=" * 47 + "\n\n")
