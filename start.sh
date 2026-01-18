@@ -26,7 +26,9 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "5.9"
+SCRIPT_VERSION = "6.0"
+SERVER_START_TIME = None
+SERVER_END_TIME = None
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
 BUNDLES_DIR = BASE_DIR / "bundles"
@@ -58,6 +60,34 @@ BASE_EXCLUDE_LIST = [
     "thumbs.db",
     "worlds/*/session.lock"
 ]
+
+def format_uptime_duration(seconds):
+    if seconds < 0:
+        return "Unknown"
+    days = int(seconds // (24 * 3600))
+    hours = int((seconds % (24 * 3600)) // 3600)
+    minutes = int((seconds % 3600) // 60)
+    seconds = int(seconds % 60)
+    parts = []
+    if days > 0:
+        parts.append(f"{days}d")
+    if hours > 0:
+        parts.append(f"{hours}h")
+    if minutes > 0:
+        parts.append(f"{minutes}min")
+    if seconds > 0 or not parts:
+        parts.append(f"{seconds}s")
+    return " ".join(parts)
+
+def get_uptime():
+    global SERVER_START_TIME, SERVER_END_TIME
+    if not SERVER_START_TIME:
+        return None, None, "Not started"
+    end_time = SERVER_END_TIME if SERVER_END_TIME else time.time()
+    uptime_seconds = end_time - SERVER_START_TIME
+    uptime_str = format_uptime_duration(uptime_seconds)
+    crash_time_str = time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(end_time))
+    return uptime_seconds, uptime_str, crash_time_str
 
 def get_device_id():
     try:
@@ -3410,9 +3440,12 @@ def check_config_file():
         print(f"Debug: Config parsing error: {e}")
         return "missing_or_corrupted"
 
-def analyze_server_crash(exit_code):
+def analyze_server_crash(exit_code, uptime_str=None):
     start_time = time.time()
     print("\n" + "=" * 50)
+    uptime_seconds, uptime_display, crash_time = get_uptime()
+    if uptime_str:
+        uptime_display = uptime_str
     if exit_code == 0:
         print("        POTENTIAL CRASH DETECTED FROM LOGS")
     else:
@@ -3425,10 +3458,12 @@ def analyze_server_crash(exit_code):
         report_file = BASE_DIR / f"crash_{timestamp}.txt"
     log_file = BASE_DIR / "logs" / "latest.log"
     print(f"\nExit Code: {exit_code}")
+    print(f"Server Uptime: {uptime_display}")
+    print(f"Crash Time: {crash_time}")
     print(f"Log File: {log_file}")
     print(f"Report File: {report_file}")
-    analysis_data = collect_crash_data(log_file, exit_code)
-    generate_crash_report(report_file, analysis_data, log_file, exit_code)
+    analysis_data = collect_crash_data(log_file, exit_code, uptime_display, crash_time)
+    generate_crash_report(report_file, analysis_data, log_file, exit_code, uptime_display, crash_time)
     if exit_code == 0:
         print("\nNote: This is a potential crash detected from log analysis.")
         print("The server exited with code 0 but showed error indicators.\n")
@@ -3437,9 +3472,11 @@ def analyze_server_crash(exit_code):
     elapsed_time = time.time() - start_time
     print(f"Crash analysis completed in {elapsed_time:.2f}s!\n")
 
-def collect_crash_data(log_file, exit_code):
+def collect_crash_data(log_file, exit_code, uptime_str=None, crash_time_str=None):
     data = {
         'exit_code': exit_code,
+        'uptime': uptime_str or "Unknown",
+        'crash_time': crash_time_str or "Unknown",
         'warn_errors': [],
         'keywords_found': {},
         'plugin_dependencies': {},
@@ -3772,7 +3809,7 @@ def get_environment_info():
         info['additional_params'] = "None"
     return info
 
-def generate_crash_report(report_file, data, log_file, exit_code):
+def generate_crash_report(report_file, data, log_file, exit_code, uptime_str=None, crash_time_str=None):
     try:
         with open(report_file, 'w', encoding='utf-8') as f:
             f.write("=" * 47 + "\n")
@@ -3792,6 +3829,8 @@ def generate_crash_report(report_file, data, log_file, exit_code):
                 f.write("The server exited with unexpected return value\n\n")
             f.write(f"Report Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"Returned Exit Code: {exit_code}\n")
+            f.write(f"Server Uptime: {data.get('uptime', 'Unknown')}\n")
+            f.write(f"Crash Time: {data.get('crash_time', 'Unknown')}\n")
             f.write(f"Log Path: {log_file}\n")
             f.write(f"Report Path: {report_file}\n\n")
             f.write("=" * 47 + "\n")
@@ -3934,6 +3973,12 @@ def ask_user_for_crash_analysis():
     print("\n" + "=" * 61)
     print("               POSSIBLE CRASH DETECTED IN LOGS")
     print("=" * 61)
+    uptime_seconds, uptime_str, crash_time = get_uptime()
+    if uptime_seconds >= 60:
+        print(f"\nServer Uptime: {uptime_str} (or {int(uptime_seconds)} seconds)")
+    else:
+        print(f"\nServer Uptime: {uptime_str}")
+    print(f"Crash Time: {crash_time}")
     print("\nWarning: The server exited normally (return code 0),")
     print("but potential crash/error indicators were found in the logs.")
     print("\nThis could indicate:")
@@ -3954,18 +3999,28 @@ def ask_user_for_crash_analysis():
         else:
             print("Please enter Y or N.")
 
-def handle_server_crash(process):
+def handle_server_crash(process, uptime_str=None):
     if process.returncode == 0:
         if not check_logs_for_errors():
             return
         if not ask_user_for_crash_analysis():
             return
-    analyze_server_crash(process.returncode)
+    if not uptime_str:
+        uptime_seconds, uptime_str, crash_time_str = get_uptime()
+    else:
+        uptime_seconds, uptime_str, crash_time_str = get_uptime()
+    analyze_server_crash(process.returncode, uptime_str)
 
 def ask_user_for_interrupt_analysis():
     print("\n" + "=" * 60)
     print("       SERVER INTERRUPTED - POTENTIAL ISSUES DETECTED")
     print("=" * 60)
+    uptime_seconds, uptime_str, crash_time = get_uptime()
+    if uptime_seconds >= 60:
+        print(f"\nServer Uptime: {uptime_str} (or {int(uptime_seconds)} seconds)")
+    else:
+        print(f"\nServer Uptime: {uptime_str}")
+    print(f"Interrupt Time: {crash_time}")
     print("\nThe server was interrupted by user (CTRL+C),")
     print("but potential issues were detected in the logs.")
     print("\nThis could indicate:")
@@ -3987,6 +4042,7 @@ def ask_user_for_interrupt_analysis():
             print("Please enter Y or N.")
 
 def start_server():
+    global SERVER_START_TIME, SERVER_END_TIME
     config_check_result = check_config_file()
     if config_check_result == "missing_or_corrupted":
         print("\nError: Configuration file is missing or corrupted!")
@@ -4046,6 +4102,8 @@ def start_server():
     print("Command:", " ".join(command))
     print("=" * 50)
     print("")
+    SERVER_START_TIME = time.time()
+    SERVER_END_TIME = None
     process = None
     try:
         process = subprocess.Popen(
@@ -4060,36 +4118,55 @@ def start_server():
         for line in process.stdout:
             print(line, end="")
         process.wait()
+        SERVER_END_TIME = time.time()
+        uptime_seconds, uptime_str, _ = get_uptime()
+        if uptime_seconds >= 60:
+            print(f"\nServer uptime: {uptime_str} (or {int(uptime_seconds)} seconds)")
+        else:
+            print(f"\nServer uptime: {uptime_str}")
         if process.returncode != 0:
-            handle_server_crash(process)
+            handle_server_crash(process, uptime_str)
         else:
             if check_logs_for_errors():
                 if ask_user_for_crash_analysis():
-                    analyze_server_crash(0)
+                    analyze_server_crash(0, uptime_str)
                 else:
                     print("\nServer stopped normally (with warnings).\n")
             else:
                 print("\nServer stopped normally.\n")
     except KeyboardInterrupt:
+        SERVER_END_TIME = time.time()
         print("\nServer shutdown requested by user (KeyboardInterrupt).\n")
+        uptime_seconds, uptime_str, _ = get_uptime()
+        if uptime_seconds >= 60:
+            print(f"Server uptime: {uptime_str} (or {int(uptime_seconds)} seconds)")
+        else:
+            print(f"Server uptime: {uptime_str}")
         if process:
             process.terminate()
             process.wait()
         print("Checking for potential issues that caused the interrupt...")
         if check_logs_for_errors():
             if ask_user_for_interrupt_analysis():
-                analyze_server_crash(-1)
+                analyze_server_crash(-1, uptime_str)
             else:
                 print("\nServer interrupted by user.\n")
         else:
             print("\nServer interrupted by user (no issues detected in logs).\n")
     except Exception as e:
         print(f"Error starting server: {e}\n")
+        SERVER_END_TIME = time.time()
+        uptime_seconds, uptime_str, _ = get_uptime()
+        if uptime_seconds >= 60:
+            print(f"Server uptime: {uptime_str} (or {int(uptime_seconds)} seconds)")
+        else:
+            print(f"Server uptime: {uptime_str}")
         if process and process.poll() is None:
             process.terminate()
             process.wait()
         if process:
-            handle_server_crash(process)
+            uptime_seconds, uptime_str, _ = get_uptime()
+            handle_server_crash(process, uptime_str)
 
 def format_backup_name(filename, version):
     if filename == "server.zip":
