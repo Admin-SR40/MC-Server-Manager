@@ -26,7 +26,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "6.1"
+SCRIPT_VERSION = "6.2"
 SERVER_START_TIME = None
 SERVER_END_TIME = None
 BASE_DIR = Path(os.getcwd())
@@ -3452,7 +3452,7 @@ def check_config_file():
 def analyze_server_crash(exit_code, uptime_str=None):
     start_time = time.time()
     print("\n" + "=" * 50)
-    uptime_seconds, uptime_display, crash_time = get_uptime()
+    uptime_display, crash_time = get_uptime()
     if uptime_str:
         uptime_display = uptime_str
     if exit_code == 0:
@@ -3507,7 +3507,7 @@ def analyze_log_content(data):
     warn_errors = []
     keywords = {
         'Out of memory': [],
-        'OutOfMemoryError': [],
+        'OutOfMemory': [],
         "Can't keep up": [],
         'Exception': [],
         'Error': [],
@@ -3911,7 +3911,7 @@ def generate_crash_report(report_file, data, log_file, exit_code, uptime_str=Non
             f.write("                Recommendations\n")
             f.write("=" * 47 + "\n\n")
             has_specific_issues = False
-            if data['keywords_found'].get('Out of memory') or data['keywords_found'].get('OutOfMemoryError'):
+            if data['keywords_found'].get('Out of memory') or data['keywords_found'].get('OutOfMemory'):
                 f.write("OUT OF MEMORY DETECTED:\n")
                 f.write(" - Increase server RAM allocation\n")
                 f.write(" - Reduce view-distance in server.properties\n")
@@ -3953,7 +3953,7 @@ def check_logs_for_errors():
     error_keywords = [
         'ERROR',
         'Out of memory',
-        'OutOfMemoryError', 
+        'OutOfMemory',
         "Can't keep up",
         'Exception',
         'Error',
@@ -4015,9 +4015,9 @@ def handle_server_crash(process, uptime_str=None):
         if not ask_user_for_crash_analysis():
             return
     if not uptime_str:
-        uptime_seconds, uptime_str, crash_time_str = get_uptime()
+        uptime_str = get_uptime()
     else:
-        uptime_seconds, uptime_str, crash_time_str = get_uptime()
+        uptime_str = get_uptime()
     analyze_server_crash(process.returncode, uptime_str)
 
 def ask_user_for_interrupt_analysis():
