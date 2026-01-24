@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 
+#    __  _________   _____                              __  ___                                 
+#   /  |/  / ____/  / ___/___  ______   _____  _____   /  |/  /___ _____  ____ _____ ____  _____
+#  / /|_/ / /       \__ \/ _ \/ ___/ | / / _ \/ ___/  / /|_/ / __ `/ __ \/ __ `/ __ `/ _ \/ ___/
+# / /  / / /___    ___/ /  __/ /   | |/ /  __/ /     / /  / / /_/ / / / / /_/ / /_/ /  __/ /    
+#/_/  /_/\____/   /____/\___/_/    |___/\___/_/     /_/  /_/\__,_/_/ /_/\__,_/\__, /\___/_/     
+#                                                                            /____/             
+#
 # Welcome!
 #
 # The script is open-source and available at:
@@ -8,7 +15,11 @@
 # You can visit the wiki page to learn more about the script:
 #   https://deepwiki.com/Admin-SR40/MC-Server-Manager
 #
-# The manager logging system is still in development.
+# To run this script, use:
+#   Windows: python start.sh [options]
+#   Linux/Mac: ./start.sh [options]
+#
+# Encountered an issue or need help?
 # You can check the log file at:
 #   ./logs/manager.log
 
@@ -38,7 +49,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "6.3"
+SCRIPT_VERSION = "6.4"
 SERVER_START_TIME = None
 SERVER_END_TIME = None
 BASE_DIR = Path(os.getcwd())
@@ -1951,15 +1962,12 @@ def create_new_server():
         for item in BASE_DIR.iterdir():
             if any(fnmatch.fnmatch(item.name, pattern) for pattern in exclude_list):
                 items_skipped += 1
-                logger.info(f"Skipped item: {item.name}")
                 continue
             try:
                 if item.is_dir():
                     shutil.rmtree(item, ignore_errors=True)
-                    logger.info(f"Removed directory: {item.name}")
                 else:
                     item.unlink()
-                    logger.info(f"Removed file: {item.name}")
                 items_removed += 1
             except Exception as e:
                 logger.warning(f"Failed to remove {item.name}: {e}")
@@ -4425,7 +4433,7 @@ def check_config_file():
 def analyze_server_crash(exit_code, uptime_str=None):
     start_time = time.time()
     print("\n" + "=" * 50)
-    uptime_display, crash_time = get_uptime()
+    uptime_seconds, uptime_display, crash_time = get_uptime()
     if uptime_str:
         uptime_display = uptime_str
     if exit_code == 0:
