@@ -49,7 +49,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "6.4"
+SCRIPT_VERSION = "6.5"
 SERVER_START_TIME = None
 SERVER_END_TIME = None
 BASE_DIR = Path(os.getcwd())
@@ -1712,13 +1712,20 @@ def import_world():
             logger.info("User cancelled world import")
             print("Operation canceled.\n")
             return
-        zip_path = Path(zip_path_input)
-        logger.info(f"User provided zip path: {zip_path}")
+        if zip_path_input.startswith('"') and zip_path_input.endswith('"'):
+            zip_path_input = zip_path_input[1:-1]
+            logger.info("Stripped surrounding quotes from path")
+        if zip_path_input.startswith("."):
+            zip_path = (BASE_DIR / zip_path_input).resolve()
+            logger.info(f"Detected relative path, converted to absolute: {zip_path}")
+        else:
+            zip_path = Path(zip_path_input).resolve()
+        logger.info(f"Final resolved zip path: {zip_path}")
         if not zip_path.exists():
             logger.error(f"File not found: {zip_path}")
             print(f"Error: File not found: {zip_path}")
             continue
-        if zip_path.suffix.lower() != '.zip':
+        if zip_path.suffix.lower() != ".zip":
             logger.error(f"File is not a ZIP archive: {zip_path}")
             print("Error: File must be a ZIP archive.")
             continue
@@ -1727,20 +1734,19 @@ def import_world():
     logger.info(f"Reading archive: {zip_path}")
     print(f"\nReading archive: {zip_path.name}")
     try:
-        with zipfile.ZipFile(zip_path, 'r') as zipf:
+        with zipfile.ZipFile(zip_path, "r") as zipf:
             world_candidates = set()
             for name in zipf.namelist():
-                if name.endswith('/'):
+                if name.endswith("/"):
                     continue
-                parts = name.split('/')
-                if len(parts) >= 2 and parts[-1] == 'level.dat':
+                parts = name.split("/")
+                if len(parts) >= 2 and parts[-1] == "level.dat":
                     world_candidates.add(parts[0])
             logger.info(f"Found {len(world_candidates)} world candidates in archive")
             if not world_candidates:
                 logger.error("No valid worlds found in archive")
                 print("Error: No valid worlds found in the archive.")
-                print("A valid world must contain a level.dat file.")
-                print("")
+                print("A valid world must contain a level.dat file.\n")
                 return
             print(f"Found {len(world_candidates)} world(s) in archive:")
             for i, world_name in enumerate(world_candidates, 1):
@@ -1749,7 +1755,7 @@ def import_world():
             conflicting_worlds = [w for w in world_candidates if w in existing_worlds]
             logger.info(f"Conflicting worlds: {conflicting_worlds}")
             if conflicting_worlds:
-                print(f"\nWarning: The following worlds already exist:")
+                print("\nWarning: The following worlds already exist:")
                 for world in conflicting_worlds:
                     print(f" - {world}")
                 replace_choice = input("\nReplace existing worlds? (Y/N): ").strip().upper()
@@ -1767,40 +1773,37 @@ def import_world():
                     except Exception as e:
                         logger.error(f"Error removing {world_name}: {e}")
                         print(f"Error removing {world_name}: {e}")
-            logger.info(f"Extracting {len(world_candidates)} worlds...")
-            print(f"\nExtracting worlds...")
+            print("\nExtracting worlds.")
             extracted_count = 0
             for world_name in world_candidates:
                 world_path = WORLDS_DIR / world_name
                 world_path.mkdir(parents=True, exist_ok=True)
                 for name in zipf.namelist():
-                    if name.startswith(world_name + '/'):
-                        relative_path = name[len(world_name)+1:]
+                    if name.startswith(world_name + "/"):
+                        relative_path = name[len(world_name) + 1 :]
                         if not relative_path:
                             continue
                         target_path = world_path / relative_path
                         target_path.parent.mkdir(parents=True, exist_ok=True)
-                        if not name.endswith('/'):
-                            with zipf.open(name) as source, open(target_path, 'wb') as target:
+                        if not name.endswith("/"):
+                            with zipf.open(name) as source, open(target_path, "wb") as target:
                                 shutil.copyfileobj(source, target)
                 if (world_path / "level.dat").exists():
-                    world_size = sum(f.stat().st_size for f in world_path.rglob('*') if f.is_file())
-                    logger.info(f"Imported world: {world_name}, size: {format_file_size(world_size)}")
+                    world_size = sum(
+                        f.stat().st_size for f in world_path.rglob("*") if f.is_file()
+                    )
+                    logger.info(f"Imported world: {world_name}")
                     print(f" - Imported: {world_name} ({format_file_size(world_size)})")
                     extracted_count += 1
                 else:
                     logger.warning(f"Invalid world (missing level.dat): {world_name}")
                     print(f" - Invalid world (missing level.dat): {world_name}")
-                    shutil.rmtree(world_path)
-            logger.info(f"Successfully imported {extracted_count} world(s)")
+                    shutil.rmtree(world_path, ignore_errors=True)
             print(f"\nSuccessfully imported {extracted_count} world(s).\n")
-            print("")            
-    except zipfile.BadZipFile:
-        logger.error(f"Invalid ZIP archive: {zip_path}")
-        print("Error: The file is not a valid ZIP archive.\n")
+            logger.info(f"World import completed: {extracted_count} worlds imported")
     except Exception as e:
-        logger.error(f"Error importing worlds: {e}")
-        print(f"Error importing worlds: {e}\n")
+        logger.error(f"Error importing world: {e}", exc_info=True)
+        print(f"Error importing world: {e}\n")
 
 def configure_world_seed():
     logger.info("Starting world seed configuration")
@@ -4827,7 +4830,7 @@ def get_environment_info():
         info['additional_params'] = "None"
     return info
 
-def generate_crash_report(report_file, data, log_file, exit_code):
+def generate_crash_report(report_file, data, log_file, exit_code, uptime_display, crash_time):
     logger.info(f"Starting crash report generation for exit code: {exit_code}")
     logger.info(f"Report file: {report_file}, Log file: {log_file}")
     try:
