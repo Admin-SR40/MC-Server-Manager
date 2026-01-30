@@ -49,9 +49,10 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "6.5"
+SCRIPT_VERSION = "6.6"
 SERVER_START_TIME = None
 SERVER_END_TIME = None
+USER_AGENT = "curl/8.13.0"
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
 BUNDLES_DIR = BASE_DIR / "bundles"
@@ -2006,7 +2007,7 @@ def create_new_server():
             elif choice == "3":
                 logger.info("User chose to exit without initialization")
                 print("Server created but not initialized.")
-                print("Please run --init or --init auto to configure the server.")
+                print("Please run --init or --init auto to configure the server.\n")
                 break
             else:
                 logger.warning(f"Invalid initialization choice: {choice}")
@@ -2064,8 +2065,10 @@ def check_for_updates(version):
     api_url = f"https://api.purpurmc.org/v2/purpur/{version}"
     try:
         logger.info(f"Making API request to: {api_url}")
+        request = urllib.request.Request(api_url)
+        request.add_header("User-Agent", USER_AGENT)
         start_time = time.time()
-        with urllib.request.urlopen(api_url, timeout=10) as response:
+        with urllib.request.urlopen(request, timeout=10) as response:
             elapsed_time = time.time() - start_time
             logger.info(f"API response received in {elapsed_time:.2f}s, status: {response.status}")
             version_data = json.loads(response.read().decode())
@@ -2107,13 +2110,13 @@ def check_for_updates(version):
         try:
             logger.info(f"Checking build {build} for successful status...")
             build_url = f"https://api.purpurmc.org/v2/purpur/{version}/{build}"
-            
+            request = urllib.request.Request(build_url)
+            request.add_header("User-Agent", USER_AGENT)
             start_time = time.time()
-            with urllib.request.urlopen(build_url, timeout=5) as build_response:
+            with urllib.request.urlopen(request, timeout=5) as build_response:
                 elapsed_time = time.time() - start_time
                 logger.info(f"Build {build} API response in {elapsed_time:.2f}s")
                 build_data = json.loads(build_response.read().decode())
-            
             if build_data.get("result") == "SUCCESS":
                 latest_build = int(build)
                 logger.info(f"Found successful build: {latest_build}")
@@ -2138,10 +2141,8 @@ def check_for_updates(version):
         logger.warning(f"No successful builds found for version {version} after checking {successful_builds_checked} builds")
         print("No successful builds found for this version.")
         return False
-    
     logger.info(f"Local build: {local_build}, Latest successful build: {latest_build}")
     print(f"Local build: {local_build}, Latest build: {latest_build}")
-    
     if latest_build > local_build:
         logger.info(f"Update available! Build {local_build} -> {latest_build}")
         print("Update available!")
@@ -2185,7 +2186,9 @@ def download_version(version=None):
             try:
                 logger.info("Making API request to get available versions")
                 start_time = time.time()
-                with urllib.request.urlopen("https://api.purpurmc.org/v2/purpur", timeout=10) as response:
+                request = urllib.request.Request("https://api.purpurmc.org/v2/purpur")
+                request.add_header("User-Agent", USER_AGENT)
+                with urllib.request.urlopen(request, timeout=10) as response:
                     elapsed_time = time.time() - start_time
                     logger.info(f"API response received in {elapsed_time:.2f}s, status: {response.status}")
                     data = json.loads(response.read().decode())
@@ -2237,8 +2240,10 @@ def download_version(version=None):
             try:
                 logger.info(f"Querying version info from PurpurMC API: {version}")
                 api_url = f"https://api.purpurmc.org/v2/purpur/{version}"
+                request = urllib.request.Request(api_url)
+                request.add_header("User-Agent", USER_AGENT)
                 start_time = time.time()
-                with urllib.request.urlopen(api_url, timeout=10) as response:
+                with urllib.request.urlopen(request, timeout=10) as response:
                     elapsed_time = time.time() - start_time
                     logger.info(f"Version API response received in {elapsed_time:.2f}s, status: {response.status}")
                     version_data = json.loads(response.read().decode())
@@ -2260,8 +2265,10 @@ def download_version(version=None):
                     try:
                         build_url = f"https://api.purpurmc.org/v2/purpur/{version}/{build}"
                         logger.info(f"Querying build info: {build_url}")
+                        request = urllib.request.Request(build_url)
+                        request.add_header("User-Agent", USER_AGENT)
                         start_time = time.time()
-                        with urllib.request.urlopen(build_url, timeout=10) as build_response:
+                        with urllib.request.urlopen(request, timeout=10) as build_response:
                             elapsed_time = time.time() - start_time
                             logger.info(f"Build {build} API response received in {elapsed_time:.2f}s")
                             build_data = json.loads(build_response.read().decode())
@@ -2348,7 +2355,9 @@ Description:
                 logger.info(f"Temporary JAR file: {temp_jar}")
                 try:
                     logger.info("Opening download connection...")
-                    with urllib.request.urlopen(download_url) as download_response:
+                    request = urllib.request.Request(download_url)
+                    request.add_header("User-Agent", USER_AGENT)
+                    with urllib.request.urlopen(request) as download_response:
                         content_length = download_response.headers.get('Content-Length')
                         if content_length:
                             total_size = int(content_length)
