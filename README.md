@@ -69,6 +69,26 @@ A powerful Minecraft server management tool written in Python (distributed as `s
    - Windows: `python start.sh [options]`
    - Linux / macOS: `./start.sh [options]`
 
+## Migrating Existing Servers
+If you already have a Minecraft server created **outside** this script,
+you cannot manage it directly without converting its structure.
+
+To solve this, use:
+- `./start.sh --standardize`
+
+This command may:
+- Move configuration files into the `config/` directory
+- Move world folders into the `worlds/` directory
+- Rename the server core jar to `core.jar`
+- Create required management directories
+
+Although the script is designed to be safe, it **may not** cover all custom setups.
+You should always backup your server files first!
+
+After standardization, you should initialize the server:
+- Use `--init` for manual configuration
+- Use `--init auto` for automatic setup (recommended for beginners)
+
 ## Command Reference
 
 ### Basic Commands
