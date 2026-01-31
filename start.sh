@@ -49,7 +49,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "6.6"
+SCRIPT_VERSION = "6.7"
 SERVER_START_TIME = None
 SERVER_END_TIME = None
 USER_AGENT = "curl/8.13.0"
@@ -540,8 +540,8 @@ def edit_server_settings():
             new_value = None
             if setting['type'] == 'boolean':
                 print("\nOptions:")
-                print("1. Enable (true)")
-                print("2. Disable (false)")
+                print(" 1. Enable (true)")
+                print(" 2. Disable (false)")
                 while True:
                     bool_choice = input("\nSelect option (1/2): ").strip()
                     if not bool_choice:
@@ -1827,9 +1827,9 @@ def configure_world_seed():
                 break
     logger.info("Presenting seed configuration options to user")
     print("\nTo generate new worlds, there are 3 options for the seed:")
-    print("1. Keep the current seed")
-    print("2. Use a random seed")
-    print("3. Set a custom seed")
+    print(" 1. Keep the current seed")
+    print(" 2. Use a random seed")
+    print(" 3. Set a custom seed")
     while True:
         try:
             option = input("\nYour option (1-3): ").strip()
@@ -1988,9 +1988,9 @@ def create_new_server():
             return
         logger.info("Presenting initialization options to user")
         print("\nInitialization options:")
-        print("1. Enter --init")
-        print("2. Enter --init auto")
-        print("3. Exit without initialization")
+        print(" 1. Enter --init")
+        print(" 2. Enter --init auto")
+        print(" 3. Exit without initialization")
         while True:
             choice = input("\nYour choice (1-3): ").strip()
             logger.info(f"User initialization choice: {choice}")
@@ -2661,9 +2661,9 @@ def manage_plugins_with_dependencies():
                 if hard_dependents:
                     logger.info("Presenting options for hard dependencies")
                     print(f"\nYou have multiple options:")
-                    print("1. Disable the dependent plugins first, then disable this one")
-                    print("2. Force disable this plugin anyway (RISKY)")
-                    print("3. Disable the whole plugin chain for me (AUTOMATIC)")
+                    print(" 1. Disable the dependent plugins first, then disable this one")
+                    print(" 2. Force disable this plugin anyway (RISKY)")
+                    print(" 3. Disable the whole plugin chain for me (AUTOMATIC)")
                     while True:
                         choice = input("\nChoose option (1/2/3) or 'C' to cancel: ").strip().upper()
                         logger.info(f"User dependency resolution choice: {choice}")
@@ -4898,7 +4898,7 @@ def generate_crash_report(report_file, data, log_file, exit_code, uptime_display
             for key, value in env_items:
                 if value:
                     f.write(f"{key}: {value}\n")
-                    logger.debug(f"Environment item: {key}: {value}")
+                    logger.info(f"Environment item: {key}: {value}")
             f.write("\n")
             logger.info("Environment information written to report")
             f.write("=" * 47 + "\n")
@@ -4911,7 +4911,7 @@ def generate_crash_report(report_file, data, log_file, exit_code, uptime_display
             f.write("=" * 47 + "\n\n")
             for i, context_block in enumerate(data['warn_errors'], 1):
                 f.write(f"Error Context #{i}:\n")
-                logger.debug(f"Writing error context #{i} with {len(context_block)} lines")
+                logger.info(f"Writing error context #{i} with {len(context_block)} lines")
                 for ctx_line in context_block:
                     marker = " >>" if ctx_line['is_target'] else "   "
                     f.write(f"{marker} Line{ctx_line['line_number']:4d}: {ctx_line['content']}\n")
@@ -4923,13 +4923,13 @@ def generate_crash_report(report_file, data, log_file, exit_code, uptime_display
             for keyword, lines in data['keywords_found'].items():
                 line_count = len(lines)
                 f.write(f"\n{keyword} at lines:\n")
-                logger.debug(f"Keyword '{keyword}' found {line_count} times")
+                logger.info(f"Keyword '{keyword}' found {line_count} times")
                 for line_num in lines[:10]:
                     f.write(f" - Line {line_num}\n")
                 if len(lines) > 10:
                     additional_count = len(lines) - 10
                     f.write(f" - ... and {additional_count} more\n")
-                    logger.debug(f"Keyword '{keyword}' has {additional_count} additional occurrences not shown")
+                    logger.info(f"Keyword '{keyword}' has {additional_count} additional occurrences not shown")
             plugin_deps = data.get('plugin_dependencies', {})
             logger.info(f"Plugin dependencies data available: {bool(plugin_deps)}")
             if plugin_deps and isinstance(plugin_deps, dict):
@@ -4949,7 +4949,7 @@ def generate_crash_report(report_file, data, log_file, exit_code, uptime_display
                                 f.write(f"\nPlugin '{plugin_name}' requires:\n")
                                 for dep in deps:
                                     f.write(f" - {dep}\n")
-                                logger.debug(f"Plugin '{plugin_name}' missing hard dependencies: {deps}")
+                                logger.info(f"Plugin '{plugin_name}' missing hard dependencies: {deps}")
                     if missing_soft and isinstance(missing_soft, dict):
                         f.write("\nMissing Soft Dependencies:\n")
                         logger.info(f"Writing {len(missing_soft)} soft dependency issues")
@@ -4958,7 +4958,7 @@ def generate_crash_report(report_file, data, log_file, exit_code, uptime_display
                                 f.write(f"\nPlugin '{plugin_name}' suggests:\n")
                                 for dep in deps:
                                     f.write(f" - {dep}\n")
-                                logger.debug(f"Plugin '{plugin_name}' missing soft dependencies: {deps}")
+                                logger.info(f"Plugin '{plugin_name}' missing soft dependencies: {deps}")
             f.write("\n" + "=" * 47 + "\n")
             f.write("                Recommendations\n")
             f.write("=" * 47 + "\n\n")
@@ -5332,7 +5332,7 @@ def rollback_version():
         friendly_name = format_backup_name(backup_file.name, current_version)
         backup_list.append((backup_file, friendly_name))
         file_size = os.path.getsize(backup_file)
-        logger.debug(f"Backup {i}: {backup_file.name} ({format_file_size(file_size)}), friendly name: {friendly_name}")
+        logger.info(f"Backup {i}: {backup_file.name} ({format_file_size(file_size)}), friendly name: {friendly_name}")
         print(f"{i}. {friendly_name}")
     print("======================")
     logger.info(f"Displayed {len(backup_list)} available backups")
@@ -5398,7 +5398,7 @@ def rollback_version():
         logger.info(f"Found {len(extracted_items)} items in temporary directory")
         exclude_list = get_exclude_list()
         logger.info(f"Using exclude list with {len(exclude_list)} patterns")
-        logger.debug(f"Exclude patterns: {exclude_list}")
+        logger.info(f"Exclude patterns: {exclude_list}")
         logger.info("Starting cleanup of current directory before rollback")
         deleted_count = 0
         skipped_count = 0
@@ -5406,7 +5406,7 @@ def rollback_version():
             item_name = item.name
             if any(fnmatch.fnmatch(item_name, pattern) for pattern in exclude_list):
                 skipped_count += 1
-                logger.debug(f"Skipped item (excluded): {item_name}")
+                logger.info(f"Skipped item (excluded): {item_name}")
                 continue
             try:
                 if item.is_dir():
@@ -5426,7 +5426,7 @@ def rollback_version():
                 if item.is_dir():
                     if dest.exists():
                         shutil.rmtree(dest)
-                        logger.debug(f"Removed existing directory: {dest.name}")
+                        logger.info(f"Removed existing directory: {dest.name}")
                     shutil.copytree(item, dest, symlinks=True)
                 else:
                     shutil.copy2(item, dest)
@@ -5557,16 +5557,16 @@ def upgrade_server(force=False):
                         version_name = version_dir.name
                         if force:
                             available_versions.append(version_name)
-                            logger.debug(f"Force mode: added version {version_name}")
+                            logger.info(f"Force mode: added version {version_name}")
                         else:
                             try:
                                 version_major = '.'.join(version_name.split('.')[:2])
                                 if (compare_versions(version_name, current_version) >= 0 and 
                                     version_major == current_major):
                                     available_versions.append(version_name)
-                                    logger.debug(f"Compatible version found: {version_name} (major: {version_major})")
+                                    logger.info(f"Compatible version found: {version_name} (major: {version_major})")
                                 else:
-                                    logger.debug(f"Skipping incompatible version: {version_name} (major: {version_major}, current major: {current_major})")
+                                    logger.info(f"Skipping incompatible version: {version_name} (major: {version_major}, current major: {current_major})")
                             except Exception as e:
                                 logger.warning(f"Could not parse version {version_name}: {e}")
                                 continue
@@ -5602,22 +5602,22 @@ def upgrade_server(force=False):
                     version_major = '.'.join(version.split('.')[:2])
                     if version_major != current_major:
                         status = "! INCOMPATIBLE"
-                        logger.debug(f"Version {version}: INCOMPATIBLE (major: {version_major})")
+                        logger.info(f"Version {version}: INCOMPATIBLE (major: {version_major})")
                     elif compare_versions(version, current_version) > 0:
                         status = "↑ NEWER"
-                        logger.debug(f"Version {version}: NEWER")
+                        logger.info(f"Version {version}: NEWER")
                     elif compare_versions(version, current_version) == 0:
                         status = "= CURRENT"
-                        logger.debug(f"Version {version}: CURRENT")
+                        logger.info(f"Version {version}: CURRENT")
                     else:
                         status = "↓ OLDER"
-                        logger.debug(f"Version {version}: OLDER")
+                        logger.info(f"Version {version}: OLDER")
                 except Exception as e:
                     logger.warning(f"Could not determine status for version {version}: {e}")
                     status = "? UNKNOWN"
             else:
                 status = "↑ NEWER" if compare_versions(version, current_version) > 0 else "= CURRENT"
-                logger.debug(f"Version {version}: {status}")
+                logger.info(f"Version {version}: {status}")
             print(f"{i}. {version} {status}")
         print("=" * 30)
         try:
@@ -5943,8 +5943,8 @@ def download_latest_version():
             print("=" * 40)
             if platform.system() == "Windows":
                 print("Please perform the following steps manually:")
-                print(f"1. Delete the current script: {current_script}")
-                print(f"2. Rename '{new_script}' to '{current_script.name}'")
+                print(f" 1. Delete the current script: {current_script}")
+                print(f" 2. Rename '{new_script}' to '{current_script.name}'")
             else:
                 print("Please run these commands manually:")
                 print(f"  rm '{current_script}'")
@@ -5965,6 +5965,173 @@ def download_latest_version():
                 pass
         return False
 
+def standardize_server_structure():
+    if not create_lock(["--standardize"]):
+        print("\nError: Another task is currently running.\n")
+        logger.warning("Failed to acquire task lock, another task running")
+        return
+    try:
+        print("\n" + "=" * 43)
+        print("       Server Structure Standardizer")
+        print("=" * 43)
+        print("\nThis action will standardize your server")
+        print("files to make it managable by the manager.\n")
+        print("You should backup your files before this")
+        print("action, the standardizer is only designed")
+        print("for normal Minecraft server file structure.\n")
+        choice = input("Would you like to continue? (Y/N): ").strip().upper()
+        logger.info(f"User confirmation input: {choice}")
+        if choice != "Y":
+            print("\nOperation cancelled.\n")
+            logger.info("User cancelled standardization")
+            remove_lock()
+            return
+        logger.info("User confirmed standardization")
+        start_time = time.time()
+        config_files = [
+            "bukkit.yml",
+            "commands.yml",
+            "purpur.yml",
+            "server.properties",
+            "spigot.yml",
+            "paper-global.yml",
+            "paper-world-defaults.yml",
+        ]
+        config_dir = BASE_DIR / "config"
+        moved_any_config = False
+        print("\nMoving config files...")
+        logger.info("Starting config file standardization")
+        config_dir.mkdir(exist_ok=True)
+        logger.info("Ensured config directory exists")
+        for filename in config_files:
+            src = BASE_DIR / filename
+            dst = config_dir / filename
+            if src.exists():
+                try:
+                    shutil.move(str(src), str(dst))
+                    print(f" - Moved {filename}")
+                    logger.info(f"Moved config file: {filename}")
+                    moved_any_config = True
+                except Exception as e:
+                    print(f" - Failed to move {filename}: {e}")
+                    logger.warning(f"Failed to move config file {filename}: {e}")
+        if not moved_any_config:
+            print(" - No config files needed moving")
+            logger.info("No config files required moving")
+        worlds_dir = BASE_DIR / "worlds"
+        world_candidates = [
+            d for d in BASE_DIR.iterdir()
+            if d.is_dir()
+            and d.name.startswith("world")
+            and d.name != "worlds"
+        ]
+        print("\nMoving worlds...")
+        logger.info("Starting world directory standardization")
+        if world_candidates:
+            worlds_dir.mkdir(exist_ok=True)
+            logger.info("Ensured worlds directory exists")
+            for world in world_candidates:
+                try:
+                    shutil.move(str(world), str(worlds_dir / world.name))
+                    print(f" - Moved {world.name}")
+                    logger.info(f"Moved world directory: {world.name}")
+                except Exception as e:
+                    print(f" - Failed to move {world.name}: {e}")
+                    logger.warning(f"Failed to move world directory {world.name}: {e}")
+        else:
+            print(" - No worlds found")
+            logger.info("No world directories detected")
+        bundles_dir = BASE_DIR / "bundles"
+        if not bundles_dir.exists():
+            bundles_dir.mkdir()
+            print("\nCreated bundles directory")
+            logger.info("Created bundles directory")
+        else:
+            logger.info("Bundles directory already exists")
+        print("\nDetecting cores...\n")
+        logger.info("Detecting server core jar files")
+        jar_files = [
+            f for f in BASE_DIR.iterdir()
+            if f.is_file() and f.suffix == ".jar"
+        ]
+        if not jar_files:
+            print("No .jar files found.")
+            logger.warning("No jar files detected in base directory")
+        elif len(jar_files) == 1:
+            jar = jar_files[0]
+            logger.info(f"Single jar detected: {jar.name}")
+
+            if jar.name != "core.jar":
+                jar.rename(BASE_DIR / "core.jar")
+                print(f"Renamed {jar.name} to core.jar")
+                logger.info(f"Renamed jar {jar.name} to core.jar")
+            else:
+                print("core.jar already exists")
+                logger.info("core.jar already exists, no rename needed")
+        else:
+            print("Detected multiple .jar files")
+            logger.warning("Multiple jar files detected")
+            for idx, jar in enumerate(jar_files, 1):
+                print(f" [{idx}] {jar.name}")
+                logger.info(f"Jar candidate [{idx}]: {jar.name}")
+            while True:
+                sel = input(
+                    f"\nWhich one would you like to use (1-{len(jar_files)}): "
+                ).strip()
+                logger.info(f"User jar selection input: {sel}")
+                if not sel.isdigit():
+                    print("Invalid input.")
+                    logger.warning("User provided non-numeric jar selection")
+                    continue
+                sel = int(sel)
+                if 1 <= sel <= len(jar_files):
+                    selected = jar_files[sel - 1]
+                    logger.info(f"User selected jar: {selected.name}")
+                    break
+                print("Selection out of range.")
+                logger.warning("User jar selection out of range")
+            target = BASE_DIR / "core.jar"
+            try:
+                if target.exists():
+                    target.unlink()
+                    logger.info("Existing core.jar removed before rename")
+                selected.rename(target)
+                print(f"Renamed {selected.name} to core.jar")
+                logger.info(f"Renamed jar {selected.name} to core.jar")
+            except Exception as e:
+                print(f"Failed to rename jar: {e}")
+                logger.error(f"Failed to rename selected jar {selected.name}: {e}")
+        elapsed = time.time() - start_time
+        print(f"\nStandardize completed in {elapsed:.2f}s!\n")
+        logger.info(f"Standardize completed successfully in {elapsed:.2f}s")
+        print("You should initialize your server:")
+        print(" 1. Enter --init")
+        print(" 2. Enter --init auto")
+        print(" 3. Exit without initialization\n")
+        while True:
+            next_choice = input("Your choice (1-3): ").strip()
+            logger.info(f"Post-standardize init choice: {next_choice}")
+            if next_choice == "1":
+                logger.info("User chose manual initialization")
+                remove_lock()
+                init_config()
+                return
+            elif next_choice == "2":
+                logger.info("User chose auto initialization")
+                remove_lock()
+                init_config_auto()
+                return
+            elif next_choice == "3":
+                print("\nExiting without initialization.\n")
+                logger.info("User exited without initialization")
+                remove_lock()
+                return
+            else:
+                print("Invalid choice.")
+                logger.warning("Invalid init choice input")
+    finally:
+        logger.info("Task lock released, standardize process ended")
+
 def show_help():
     print("=" * 51)
     print(f"      Minecraft Server Management Tool (v{SCRIPT_VERSION})")
@@ -5979,6 +6146,7 @@ def show_help():
     print("")
     print("Commands:")
     print("  (no command)           Start the server")
+    print("  --standardize          Standardize server file structure")
     print("  --init [auto]          Initialize new server configuration")
     print("  --info                 Show current server configuration")
     print("  --list                 List all available versions")
@@ -6022,6 +6190,9 @@ def main():
         if len(sys.argv) == 1:
             logger.info("Starting server")
             start_server()
+        elif sys.argv[1] == "--standardize":
+            logger.info("Standardizing server structure")
+            standardize_server_structure()
         elif sys.argv[1] == "--init":
             logger.info("Initializing server configuration")
             if len(sys.argv) > 2 and sys.argv[2].lower() == "auto":
