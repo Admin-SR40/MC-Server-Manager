@@ -49,7 +49,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "6.8"
+SCRIPT_VERSION = "6.9"
 SERVER_START_TIME = None
 SERVER_END_TIME = None
 USER_AGENT = "MCSM/" + SCRIPT_VERSION
@@ -86,6 +86,16 @@ BASE_EXCLUDE_LIST = [
     "thumbs.db",
     "worlds/*/session.lock"
 ]
+
+def generate_offline_uuid(username: str) -> str:
+    data = f"OfflinePlayer:{username}".encode('utf-8')
+    md5_bytes = hashlib.md5(data).digest()
+    b = bytearray(md5_bytes)
+    b[6] = (b[6] & 0x0f) | 0x30
+    b[8] = (b[8] & 0x3f) | 0x80
+    hex_str = b.hex()
+    uuid_str = f"{hex_str[0:8]}-{hex_str[8:12]}-{hex_str[12:16]}-{hex_str[16:20]}-{hex_str[20:32]}"
+    return uuid_str
 
 def setup_logger():
     LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -966,7 +976,7 @@ def add_to_list(items, list_type, file_path):
             else:
                 logger.warning(f"Invalid IP address format: {ip}")
                 print("Invalid IP address format. Please try again.")
-        reason = input("Enter ban reason (optional): ").strip() or "Banned by an operator."
+        reason = input("\nEnter ban reason (optional): ").strip() or "Banned by an operator."
         logger.info(f"Ban reason: {reason}")
         new_entry = {
             "ip": ip,
@@ -979,37 +989,56 @@ def add_to_list(items, list_type, file_path):
         logger.info(f"Added IP ban entry: {ip} with reason: {reason}")
     else:
         online_mode = is_online_mode()
-        if not online_mode and list_type in ["banned-players", "whitelist"]:
-            logger.warning(f"Server in offline mode, cannot add to {list_type}")
+        use_offline_uuid = False
+        if not online_mode:
+            logger.warning("Server is in offline mode, will generate offline UUIDs")
             print("\nWARNING: Server is in offline mode (online-mode=false).")
-            print("Cannot add players to this list because UUID generation")
-            print("differs between online and offline modes.")
-            print("You can only remove existing entries in offline mode.")
-            print("You can use in-game commands to add players instead.\n")
-            return
+            print("UUIDs for offline players are generated locally and may differ from other servers.")
+            print("This means the same username may have a different UUID on other servers.\n")
+            choice = input("Do you want to continue using offline UUIDs? (Y/N): ").strip().upper()
+            if choice != 'Y':
+                logger.info("User cancelled adding player in offline mode")
+                print("Operation cancelled.\n")
+                return
+            logger.info("User chose to continue in offline mode, will generate offline UUID")
+            use_offline_uuid = True
+        username = None
+        uuid = None
+        actual_name = None
         while True:
-            username = input("Enter player username: ").strip()
-            if not username:
+            username_input = input("\nEnter player username: ").strip()
+            if not username_input:
                 logger.info("User cancelled player addition")
                 print("Operation cancelled.\n")
                 return
-            if len(username) > 20:
-                logger.warning(f"Username too long: {username}")
-                print("Username too long (max 20 characters). Please try again.")
+            if len(username_input) > 16:
+                logger.warning(f"Username too long: {username_input}")
+                print("Username too long (max 16 characters). Please try again.")
                 continue
-            logger.info(f"Fetching UUID for username: {username}")
-            print(f"Fetching UUID for {username}...")
-            uuid, actual_name = get_mojang_uuid(username)
-            if not uuid:
-                logger.error(f"Could not fetch UUID for username: {username}")
-                print(f"Error: Could not fetch UUID for '{username}'.")
-                print("Please check the username and try again.")
-                continue
-            logger.info(f"Successfully fetched UUID for {username}: {uuid}")
-            print(f"Found: {actual_name} -> {uuid}")
-            break
+            if use_offline_uuid:
+                logger.info(f"Generating offline UUID for username: {username_input}")
+                uuid = generate_offline_uuid(username_input)
+                actual_name = username_input
+                print(f"Generated: {actual_name} -> {uuid}")
+                break
+            else:
+                logger.info(f"Fetching UUID for username: {username_input}")
+                print(f"Fetching UUID for {username_input}...")
+                uuid, actual_name = get_mojang_uuid(username_input)
+                if not uuid:
+                    logger.error(f"Could not fetch UUID for username: {username_input}")
+                    print(f"Error: Could not fetch UUID for '{username_input}'.")
+                    print("Please check the username and try again.")
+                    continue
+                logger.info(f"Successfully fetched UUID for {username_input}: {uuid}")
+                print(f"Found: {actual_name} -> {uuid}")
+                break
+        if actual_name is None or uuid is None:
+            logger.error("Failed to obtain valid username/UUID, this should not happen")
+            print("Internal error: could not obtain valid player information.\n")
+            return
         if list_type == "banned-players":
-            reason = input("Enter ban reason (optional): ").strip() or "Banned by an operator."
+            reason = input("\nEnter ban reason (optional): ").strip() or "Banned by an operator."
             logger.info(f"Ban reason: {reason}")
             new_entry = {
                 "uuid": uuid,
