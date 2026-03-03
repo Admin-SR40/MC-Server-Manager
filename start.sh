@@ -49,7 +49,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "6.9"
+SCRIPT_VERSION = "7.0"
 SERVER_START_TIME = None
 SERVER_END_TIME = None
 USER_AGENT = "MCSM/" + SCRIPT_VERSION
@@ -970,12 +970,18 @@ def add_to_list(items, list_type, file_path):
                 logger.info("User cancelled IP ban addition")
                 print("Operation cancelled.\n")
                 return
-            if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', ip):
+            ip_pattern = re.compile(
+                r'^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.'
+                r'(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.'
+                r'(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.'
+                r'(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$'
+            )
+            if ip_pattern.match(ip):
                 logger.info(f"Valid IP address entered: {ip}")
                 break
             else:
                 logger.warning(f"Invalid IP address format: {ip}")
-                print("Invalid IP address format. Please try again.")
+                print("Invalid IP address format. Please try again.\n")
         reason = input("\nEnter ban reason (optional): ").strip() or "Banned by an operator."
         logger.info(f"Ban reason: {reason}")
         new_entry = {
