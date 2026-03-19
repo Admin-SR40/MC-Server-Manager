@@ -49,7 +49,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "7.0"
+SCRIPT_VERSION = "7.1"
 SERVER_START_TIME = None
 SERVER_END_TIME = None
 USER_AGENT = "MCSM/" + SCRIPT_VERSION
@@ -1444,45 +1444,18 @@ def format_file_size(bytes_size):
         unit_index += 1
     return f"{size:.1f} {units[unit_index]}"
 
-def manage_worlds():
-    if not create_lock(["--worlds"]):
+def manage_worlds(mode=None):
+    if not create_lock(["--worlds"] + ([mode] if mode else [])):
         logger.error("Failed to create lock for world management")
         print("\nError: Could not create task lock\n")
         return
     try:
-        logger.info("Starting world management utility")
+        logger.info(f"Starting world management utility (mode: {mode})")
         print("\n" + "=" * 52)
         print("                World Management Utility")
         print("=" * 52)
         WORLDS_DIR.mkdir(parents=True, exist_ok=True)
         world_folders = [d for d in WORLDS_DIR.iterdir() if d.is_dir()]
-        if not world_folders:
-            logger.info("No world folders found")
-            print("\nNo world folders found.")
-            print("\nAvailable operations:")
-            print(" 1. Import worlds")
-            print(" 2. Configure world seed")
-            while True:
-                try:
-                    choice = input("\nYour choice (1/2): ").strip()
-                    if choice == "1":
-                        logger.info("User chose to import world")
-                        import_world()
-                        break
-                    elif choice == "2":
-                        logger.info("User chose to configure world seed")
-                        configure_world_seed()
-                        break
-                    else:
-                        logger.warning(f"Invalid option selected in world management: {choice}")
-                        print("Invalid option. Please choose 1 or 2.\n")
-                except KeyboardInterrupt:
-                    logger.info("World management operation cancelled by user")
-                    print("\nOperation canceled.\n")
-                    break
-            return
-        logger.info(f"Found {len(world_folders)} world folder(s)")
-        print("\n                - Existing Worlds -")
         world_info = []
         total_size = 0
         for world_folder in world_folders:
@@ -1500,50 +1473,71 @@ def manage_worlds():
         name_width = 25
         size_width = 11
         status_width = 12
+        print("                - Existing Worlds -")
         print("╔" + "═" * name_width + "╦" + "═" * size_width + "╦" + "═" * status_width + "╗")
         print("║" + " Worlds".ljust(name_width - 1) +
               " ║" + " Size".ljust(size_width - 1) +
               " ║" + " Status".ljust(status_width - 1) + " ║")
         print("╠" + "═" * name_width + "╬" + "═" * size_width + "╬" + "═" * status_width + "╣")
-        for i, (world_folder, size, status) in enumerate(world_info, 1):
-            name_display = f"{i}. {world_folder.name}"
-            print(f"║ {name_display:<{name_width - 1}}"
-                  f"║ {format_file_size(size):<{size_width - 1}}"
-                  f"║ {status:<{status_width - 1}}║")
-        print("╠" + "═" * name_width + "╬" + "═" * size_width + "╬" + "═" * status_width + "╣")
-        print(f"║ {'0. All':<{name_width - 1}}║ {format_file_size(total_size):<{size_width - 1}}║ {'All Worlds':<{status_width - 1}}║")
+        if world_info:
+            for i, (world_folder, size, status) in enumerate(world_info, 1):
+                name_display = f"{i}. {world_folder.name}"
+                print(f"║ {name_display:<{name_width - 1}}"
+                      f"║ {format_file_size(size):<{size_width - 1}}"
+                      f"║ {status:<{status_width - 1}}║")
+            print("╠" + "═" * name_width + "╬" + "═" * size_width + "╬" + "═" * status_width + "╣")
+            print(f"║ {'0. All':<{name_width - 1}}║ {format_file_size(total_size):<{size_width - 1}}║ {'All Worlds':<{status_width - 1}}║")
+        else:
+            print(f"║ {'No worlds found.':<{name_width - 1}}║ {'0 B':<{size_width - 1}}║ {'N/A':<{status_width - 1}}║")
         print("╚" + "═" * name_width + "╩" + "═" * size_width + "╩" + "═" * status_width + "╝")
         logger.info(f"Total world size: {format_file_size(total_size)} across {len(world_info)} worlds")
-        print("\nAvailable operations:")
-        print(" 1. Delete worlds")
-        print(" 2. Backup worlds")
-        print(" 3. Import worlds")
-        print(" 4. Configure world seed")
-        try:
-            operation_choice = input("\nSelect operation (1-4): ").strip()
-            if not operation_choice:
-                logger.info("User cancelled operation selection")
-                print("No operation selected. Operation canceled.\n")
+        if mode == 'import':
+            logger.info("Direct import mode")
+            import_world()
+        elif mode == 'delete':
+            logger.info("Direct delete mode")
+            if not world_folders:
+                print("\nNo world folders found. Nothing to delete.\n")
                 return
-            logger.info(f"User selected operation: {operation_choice}")
-            if operation_choice == "1":
-                delete_worlds(world_info)
-            elif operation_choice == "2":
-                backup_worlds(world_info)
-            elif operation_choice == "3":
-                import_world()
-            elif operation_choice == "4":
-                configure_world_seed()
-            else:
-                logger.warning(f"Invalid operation selection: {operation_choice}")
-                print("Invalid operation selection.\n")
+            delete_worlds(world_info)
+        elif mode == 'backup':
+            logger.info("Direct backup mode")
+            if not world_folders:
+                print("\nNo world folders found. Nothing to backup.\n")
                 return
-        except KeyboardInterrupt:
-            logger.info("World management operation interrupted by user")
-            print("\nOperation canceled by user.\n")
-        except Exception as e:
-            logger.error(f"Error during world operation: {e}")
-            print(f"Error during world operation: {e}\n")
+            backup_worlds(world_info)
+        else:
+            logger.info("Interactive mode")
+            print("\nAvailable operations:")
+            print(" 1. Delete worlds")
+            print(" 2. Backup worlds")
+            print(" 3. Import worlds")
+            print(" 4. Configure world seed")
+            try:
+                operation_choice = input("\nSelect operation (1-4): ").strip()
+                if not operation_choice:
+                    logger.info("User cancelled operation selection")
+                    print("No operation selected. Operation canceled.\n")
+                    return
+                logger.info(f"User selected operation: {operation_choice}")
+                if operation_choice == "1":
+                    delete_worlds(world_info)
+                elif operation_choice == "2":
+                    backup_worlds(world_info)
+                elif operation_choice == "3":
+                    import_world()
+                elif operation_choice == "4":
+                    configure_world_seed()
+                else:
+                    logger.warning(f"Invalid operation selection: {operation_choice}")
+                    print("Invalid operation selection.\n")
+                    return
+            except KeyboardInterrupt:
+                logger.info("World management operation interrupted by user")
+                print("\nOperation canceled by user.\n")
+            except Exception as e:
+                logger.error(f"Error during world operation: {e}")
+                print(f"Error during world operation: {e}\n")
     finally:
         if remove_lock():
             logger.info("World management lock released")
@@ -5538,12 +5532,14 @@ def disable_all_plugins():
     print(f"Successfully disabled {disabled_count} plugins.")
     return True
 
-def upgrade_server(force=False):
-    logger.info(f"Starting upgrade_server function, force mode: {force}")
+def upgrade_server(target_version=None, force=False):
+    logger.info(f"Starting upgrade_server function, target_version={target_version}, force={force}")
     command = ["--upgrade"]
-    if force:
+    if target_version:
+        command.append(target_version)
+    elif force:
         command.append("force")
-        logger.info(f"Force mode enabled, command: {' '.join(command)}")
+        logger.info("Force mode enabled")
     if not create_lock(command):
         logger.error("Failed to create lock for upgrade operation")
         print("\nError: Could not create task lock\n")
@@ -5553,9 +5549,6 @@ def upgrade_server(force=False):
         print("\n" + "=" * 50)
         print("               Server Core Upgrade")
         print("=" * 50)
-        if force:
-            logger.info("Force mode: showing all available versions regardless of compatibility")
-            print("\nForce mode: Showing all available versions regardless of compatibility.\n")
         try:
             logger.info("Loading configuration to determine current version")
             config = load_config()
@@ -5567,13 +5560,6 @@ def upgrade_server(force=False):
             print("Please ensure the server is properly configured.\n")
             return
         print(f"Current server version: {current_version}")
-        try:
-            current_major = '.'.join(current_version.split('.')[:2])
-            logger.info(f"Parsed current major version: {current_major}")
-        except Exception as e:
-            logger.error(f"Could not parse current version format '{current_version}': {e}")
-            print("Error: Could not parse current version format.")
-            return
         backup_choice = input("\nDo you want to create a backup before upgrading? (Y/N): ").strip().upper()
         logger.info(f"User backup choice: {backup_choice}")
         if backup_choice == "Y":
@@ -5590,86 +5576,115 @@ def upgrade_server(force=False):
                     core_zip = version_dir / "core.zip"
                     if core_zip.exists():
                         version_name = version_dir.name
-                        if force:
-                            available_versions.append(version_name)
-                            logger.info(f"Force mode: added version {version_name}")
-                        else:
-                            try:
-                                version_major = '.'.join(version_name.split('.')[:2])
-                                if (compare_versions(version_name, current_version) >= 0 and 
-                                    version_major == current_major):
-                                    available_versions.append(version_name)
-                                    logger.info(f"Compatible version found: {version_name} (major: {version_major})")
-                                else:
-                                    logger.info(f"Skipping incompatible version: {version_name} (major: {version_major}, current major: {current_major})")
-                            except Exception as e:
-                                logger.warning(f"Could not parse version {version_name}: {e}")
-                                continue
-            logger.info(f"Found {len(available_versions)} available versions")
-        else:
-            logger.warning("Bundles directory does not exist")
+                        available_versions.append(version_name)
+                        logger.info(f"Found version: {version_name}")
         if not available_versions:
-            if force:
-                logger.warning(f"No versions found in bundles directory")
-                print(f"\nNo versions found in bundles directory.")
-            else:
-                logger.warning(f"No compatible versions found for upgrade from {current_version}")
-                print(f"\nNo compatible versions found for upgrade.")
-                print(f"Current version: {current_version}")
-                print(f"Looking for versions with major version {current_major} or higher.")
-                print('Use "--upgrade force" to show all available versions.\n')
+            logger.warning("No versions found in bundles directory")
+            print("\nNo versions found in bundles directory.")
+            print('Use "--get <version>" to download a version first.\n')
             return
-        sorted_versions = sorted(
-            available_versions, 
-            key=lambda v: [int(n) for n in v.split('.')], 
-            reverse=True
-        )
-        logger.info(f"Sorted {len(sorted_versions)} versions for display")
-        if force:
-            print(f"\nAll available versions:")
-        else:
-            print('\nUse "--upgrade force" to show all available versions.')
-            print(f"Available upgrade versions (compatible with {current_major}.x):")
-        print("=" * 30)
-        for i, version in enumerate(sorted_versions, 1):
-            if force:
-                try:
-                    version_major = '.'.join(version.split('.')[:2])
-                    if version_major != current_major:
-                        status = "! INCOMPATIBLE"
-                        logger.info(f"Version {version}: INCOMPATIBLE (major: {version_major})")
-                    elif compare_versions(version, current_version) > 0:
-                        status = "↑ NEWER"
-                        logger.info(f"Version {version}: NEWER")
-                    elif compare_versions(version, current_version) == 0:
-                        status = "= CURRENT"
-                        logger.info(f"Version {version}: CURRENT")
-                    else:
-                        status = "↓ OLDER"
-                        logger.info(f"Version {version}: OLDER")
-                except Exception as e:
-                    logger.warning(f"Could not determine status for version {version}: {e}")
-                    status = "? UNKNOWN"
-            else:
-                status = "↑ NEWER" if compare_versions(version, current_version) > 0 else "= CURRENT"
-                logger.info(f"Version {version}: {status}")
-            print(f"{i}. {version} {status}")
-        print("=" * 30)
-        try:
-            selection = input("\nSelect a version to upgrade to (number): ").strip()
-            logger.info(f"User selection input: '{selection}'")
-            if not selection:
-                logger.info("User cancelled selection (empty input)")
-                print("No selection made.\n")
+        if target_version:
+            logger.info(f"Direct upgrade to version: {target_version}")
+            if target_version not in available_versions:
+                logger.error(f"Version {target_version} not found in bundles")
+                print(f"\nVersion {target_version} not found.")
+                print(f'Please download it first using: --get {target_version}\n')
                 return
-            index = int(selection) - 1
-            if index < 0 or index >= len(sorted_versions):
-                logger.warning(f"Invalid selection index: {index}, valid range: 0-{len(sorted_versions)-1}")
-                print("Invalid selection.")
-                return
-            selected_version = sorted_versions[index]
-            logger.info(f"Selected version: {selected_version}")
+            selected_version = target_version
             print(f"Selected version: {selected_version}")
+        else:
+            filtered_versions = []
+            try:
+                current_major = '.'.join(current_version.split('.')[:2])
+                logger.info(f"Current major version: {current_major}")
+            except Exception as e:
+                logger.error(f"Could not parse current version format '{current_version}': {e}")
+                print("Error: Could not parse current version format.")
+                return
+            for ver in available_versions:
+                try:
+                    ver_major = '.'.join(ver.split('.')[:2])
+                    if force:
+                        filtered_versions.append(ver)
+                        logger.info(f"Force mode: added version {ver}")
+                    else:
+                        if (compare_versions(ver, current_version) >= 0 and
+                                ver_major == current_major):
+                            filtered_versions.append(ver)
+                            logger.info(f"Compatible version found: {ver}")
+                except Exception as e:
+                    logger.warning(f"Could not parse version {ver}: {e}")
+                    continue
+            if not filtered_versions:
+                if force:
+                    logger.warning("No versions found in bundles directory (force mode)")
+                    print("\nNo versions found in bundles directory.")
+                else:
+                    logger.warning(f"No compatible versions found for upgrade from {current_version}")
+                    print(f"\nNo compatible versions found for upgrade.")
+                    print(f"Current version: {current_version}")
+                    print(f"Looking for versions with major version {current_major} or higher.")
+                    print('Use "--upgrade force" to show all available versions.\n')
+                return
+            sorted_versions = sorted(
+                filtered_versions,
+                key=lambda v: [int(n) for n in v.split('.')],
+                reverse=True
+            )
+            logger.info(f"Sorted {len(sorted_versions)} versions for display")
+            if force:
+                print(f"\nAll available versions:")
+            else:
+                print('\nUse "--upgrade force" to show all available versions.')
+                print(f"Available upgrade versions (compatible with {current_major}.x):")
+            print("=" * 30)
+            for i, ver in enumerate(sorted_versions, 1):
+                status = ""
+                if force:
+                    try:
+                        ver_major = '.'.join(ver.split('.')[:2])
+                        if ver_major != current_major:
+                            status = "! INCOMPATIBLE"
+                        elif compare_versions(ver, current_version) > 0:
+                            status = "↑ NEWER"
+                        elif compare_versions(ver, current_version) == 0:
+                            status = "= CURRENT"
+                        else:
+                            status = "↓ OLDER"
+                    except Exception as e:
+                        logger.warning(f"Could not determine status for version {ver}: {e}")
+                        status = "? UNKNOWN"
+                else:
+                    if compare_versions(ver, current_version) > 0:
+                        status = "↑ NEWER"
+                    else:
+                        status = "= CURRENT"
+                print(f"{i}. {ver} {status}")
+                logger.info(f"Displayed version {ver}: {status}")
+            print("=" * 30)
+            try:
+                selection = input("\nSelect a version to upgrade to (number): ").strip()
+                logger.info(f"User selection input: '{selection}'")
+                if not selection:
+                    logger.info("User cancelled selection (empty input)")
+                    print("No selection made.\n")
+                    return
+                index = int(selection) - 1
+                if index < 0 or index >= len(sorted_versions):
+                    logger.warning(f"Invalid selection index: {index}, valid range: 0-{len(sorted_versions)-1}")
+                    print("Invalid selection.")
+                    return
+                selected_version = sorted_versions[index]
+                logger.info(f"Selected version: {selected_version}")
+                print(f"Selected version: {selected_version}")
+            except ValueError:
+                logger.error("Invalid input in version selection - expected a number")
+                print("Invalid input. Please enter a number.\n")
+                return
+            except Exception as e:
+                logger.error(f"Error during version selection: {e}", exc_info=True)
+                print(f"Error during version selection: {e}\n")
+                return
             if force:
                 try:
                     selected_major = '.'.join(selected_version.split('.')[:2])
@@ -5697,111 +5712,111 @@ def upgrade_server(force=False):
                             return
                 except Exception as e:
                     logger.warning(f"Could not compare versions: {e}")
-            if selected_version == current_version:
-                logger.info("Selected version is same as current version")
-                print("Selected version is the same as current version.")
-                reinstall = input("Do you want to reinstall the current version? (Y/N): ").strip().upper()
-                logger.info(f"User reinstall choice: {reinstall}")
-                if reinstall != "Y":
-                    logger.info("User cancelled reinstall")
-                    print("Upgrade canceled.\n")
-                    return
-            if check_for_updates(selected_version):
-                logger.info(f"Update available for version {selected_version}")
-                update_choice = input("\nNewer build available. Download now? (Y/N): ").strip().upper()
-                logger.info(f"User update choice: {update_choice}")
-                if update_choice == "Y":
-                    logger.info("User chose to download newer build")
-                    print("Updating to latest build...")
-                    download_version(selected_version)
-                else:
-                    logger.info("User skipped downloading newer build")
-            show_version_info(selected_version)
-            confirm = input(f"\nAre you sure you want to upgrade from {current_version} to {selected_version}? (Y/N): ").strip().upper()
-            logger.info(f"Final user confirmation for upgrade: {confirm}")
-            if confirm != "Y":
-                logger.info("User cancelled upgrade after final confirmation")
+        if selected_version == current_version:
+            logger.info("Selected version is same as current version")
+            print("Selected version is the same as current version.")
+            reinstall = input("Do you want to reinstall the current version? (Y/N): ").strip().upper()
+            logger.info(f"User reinstall choice: {reinstall}")
+            if reinstall != "Y":
+                logger.info("User cancelled reinstall")
                 print("Upgrade canceled.\n")
                 return
-            print("\nUpgrading server core...")
-            core_zip_path = BUNDLES_DIR / selected_version / "core.zip"
-            logger.info(f"Core ZIP path for selected version: {core_zip_path}")
-            if not core_zip_path.exists():
-                logger.error(f"Core package not found for version {selected_version}")
-                print(f"Error: Core package not found for version {selected_version}")
-                return
-            temp_jar_dir = BASE_DIR / "temp_jar"
-            logger.info(f"Temporary JAR directory: {temp_jar_dir}")
-            if temp_jar_dir.exists():
-                logger.info(f"Temporary directory already exists, removing: {temp_jar_dir}")
-                shutil.rmtree(temp_jar_dir)
-            temp_jar_dir.mkdir()
-            logger.info(f"Created temporary directory: {temp_jar_dir}")
-            try:
-                logger.info(f"Extracting core.zip from {core_zip_path}")
-                with zipfile.ZipFile(core_zip_path, 'r') as zipf:
-                    file_count = len(zipf.namelist())
-                    logger.info(f"Core ZIP contains {file_count} files/entries")
-                    zipf.extractall(temp_jar_dir)
-                    logger.info(f"Extracted {file_count} files to temporary directory")
-                core_jar_temp = temp_jar_dir / "core.jar"
-                logger.info(f"Looking for core.jar in extracted files: {core_jar_temp}")
-                if not core_jar_temp.exists():
-                    logger.error("core.jar not found in the extracted package")
-                    print("Error: core.jar not found in the package.")
-                    return
-                logger.info("core.jar found in extracted package")
-                if SERVER_JAR.exists():
-                    backup_jar = BASE_DIR / "core.jar.bak"
-                    shutil.copy2(SERVER_JAR, backup_jar)
-                    logger.info(f"Backed up current core.jar to: {backup_jar}")
-                    print("Backed up current core.jar")
-                shutil.copy2(core_jar_temp, SERVER_JAR)
-                logger.info(f"Copied new core.jar from {core_jar_temp} to {SERVER_JAR}")
-                print("\nCore upgraded successfully.")
-                config = configparser.ConfigParser()
-                config.read(CONFIG_FILE)
-                if "SERVER" in config:
-                    config["SERVER"]["version"] = selected_version
-                    with open(CONFIG_FILE, "w") as f:
-                        config.write(f)
-                    logger.info(f"Updated configuration to version {selected_version}")
-                    print(f"Updated configuration to version {selected_version}")
-                else:
-                    logger.warning("SERVER section not found in config, cannot update version")
-            except Exception as e:
-                logger.error(f"Error during core upgrade: {e}", exc_info=True)
-                print(f"Error during core upgrade: {e}")
-                return
-            finally:
-                if temp_jar_dir.exists():
-                    logger.info(f"Cleaning up temporary directory: {temp_jar_dir}")
-                    try:
-                        shutil.rmtree(temp_jar_dir)
-                        logger.info(f"Successfully removed temporary directory: {temp_jar_dir}")
-                    except Exception as e:
-                        logger.error(f"Failed to remove temporary directory {temp_jar_dir}: {e}")
-            plugin_choice = input("\nDo you want to disable all plugins for data safety? (Y/N): ").strip().upper()
-            logger.info(f"User plugin disable choice: {plugin_choice}")
-            if plugin_choice == "Y":
-                if disable_all_plugins():
-                    logger.info("All plugins have been disabled")
-                    print("All plugins have been disabled.")
-                else:
-                    logger.warning("Failed to disable some plugins")
-                    print("Failed to disable some plugins.")
+        if check_for_updates(selected_version):
+            logger.info(f"Update available for version {selected_version}")
+            update_choice = input("\nNewer build available. Download now? (Y/N): ").strip().upper()
+            logger.info(f"User update choice: {update_choice}")
+            if update_choice == "Y":
+                logger.info("User chose to download newer build")
+                print("Updating to latest build...")
+                download_version(selected_version)
             else:
-                logger.info("User chose to leave plugins unchanged")
-                print("Plugins left unchanged.")
-            logger.info("Server upgrade completed successfully")
-            print("\nServer upgrade completed successfully!")
-            print("Please review your plugin compatibility before starting the server.\n")
-        except ValueError:
-            logger.error("Invalid input in version selection - expected a number")
-            print("Invalid input. Please enter a number.\n")
+                logger.info("User skipped downloading newer build")
+        show_version_info(selected_version)
+        confirm = input(f"\nAre you sure you want to upgrade from {current_version} to {selected_version}? (Y/N): ").strip().upper()
+        logger.info(f"Final user confirmation for upgrade: {confirm}")
+        if confirm != "Y":
+            logger.info("User cancelled upgrade after final confirmation")
+            print("Upgrade canceled.\n")
+            return
+        print("\nUpgrading server core...")
+        core_zip_path = BUNDLES_DIR / selected_version / "core.zip"
+        logger.info(f"Core ZIP path for selected version: {core_zip_path}")
+        if not core_zip_path.exists():
+            logger.error(f"Core package not found for version {selected_version}")
+            print(f"Error: Core package not found for version {selected_version}")
+            return
+        temp_jar_dir = BASE_DIR / "temp_jar"
+        logger.info(f"Temporary JAR directory: {temp_jar_dir}")
+        if temp_jar_dir.exists():
+            logger.info(f"Temporary directory already exists, removing: {temp_jar_dir}")
+            shutil.rmtree(temp_jar_dir)
+        temp_jar_dir.mkdir()
+        logger.info(f"Created temporary directory: {temp_jar_dir}")
+        try:
+            logger.info(f"Extracting core.zip from {core_zip_path}")
+            with zipfile.ZipFile(core_zip_path, 'r') as zipf:
+                file_count = len(zipf.namelist())
+                logger.info(f"Core ZIP contains {file_count} files/entries")
+                zipf.extractall(temp_jar_dir)
+                logger.info(f"Extracted {file_count} files to temporary directory")
+            core_jar_temp = temp_jar_dir / "core.jar"
+            logger.info(f"Looking for core.jar in extracted files: {core_jar_temp}")
+            if not core_jar_temp.exists():
+                logger.error("core.jar not found in the extracted package")
+                print("Error: core.jar not found in the package.")
+                return
+            logger.info("core.jar found in extracted package")
+            if SERVER_JAR.exists():
+                backup_jar = BASE_DIR / "core.jar.bak"
+                shutil.copy2(SERVER_JAR, backup_jar)
+                logger.info(f"Backed up current core.jar to: {backup_jar}")
+                print("Backed up current core.jar")
+            shutil.copy2(core_jar_temp, SERVER_JAR)
+            logger.info(f"Copied new core.jar from {core_jar_temp} to {SERVER_JAR}")
+            print("\nCore upgraded successfully.")
+            config = configparser.ConfigParser()
+            config.read(CONFIG_FILE)
+            if "SERVER" in config:
+                config["SERVER"]["version"] = selected_version
+                with open(CONFIG_FILE, "w") as f:
+                    config.write(f)
+                logger.info(f"Updated configuration to version {selected_version}")
+                print(f"Updated configuration to version {selected_version}")
+            else:
+                logger.warning("SERVER section not found in config, cannot update version")
         except Exception as e:
-            logger.error(f"Error during upgrade process: {e}", exc_info=True)
-            print(f"Error during upgrade process: {e}\n")
+            logger.error(f"Error during core upgrade: {e}", exc_info=True)
+            print(f"Error during core upgrade: {e}")
+            return
+        finally:
+            if temp_jar_dir.exists():
+                logger.info(f"Cleaning up temporary directory: {temp_jar_dir}")
+                try:
+                    shutil.rmtree(temp_jar_dir)
+                    logger.info(f"Successfully removed temporary directory: {temp_jar_dir}")
+                except Exception as e:
+                    logger.error(f"Failed to remove temporary directory {temp_jar_dir}: {e}")
+        plugin_choice = input("\nDo you want to disable all plugins for data safety? (Y/N): ").strip().upper()
+        logger.info(f"User plugin disable choice: {plugin_choice}")
+        if plugin_choice == "Y":
+            if disable_all_plugins():
+                logger.info("All plugins have been disabled")
+                print("All plugins have been disabled.")
+            else:
+                logger.warning("Failed to disable some plugins")
+                print("Failed to disable some plugins.")
+        else:
+            logger.info("User chose to leave plugins unchanged")
+            print("Plugins left unchanged.")
+        logger.info("Server upgrade completed successfully")
+        print("\nServer upgrade completed successfully!")
+        print("Please review your plugin compatibility before starting the server.\n")
+    except KeyboardInterrupt:
+        logger.warning("Upgrade operation interrupted by user")
+        print("\nUpgrade interrupted by user.\n")
+    except Exception as e:
+        logger.error(f"Error during upgrade process: {e}", exc_info=True)
+        print(f"Error during upgrade process: {e}\n")
     finally:
         logger.info("Removing task lock for upgrade operation")
         if remove_lock():
@@ -6188,13 +6203,13 @@ def show_help():
     print("  --plugins [analyze]    Show installed plugins and toggle them")
     print("  --save <ver>           Save current version to bundles")
     print("  --backup               Create timestamped backup of current version")
-    print("  --worlds               Manage worlds with multiple options")
+    print("  --worlds [mode]        Manage worlds with multiple options")
     print("  --get [ver]            Fetch a Purpur server info and download")
     print("  --new                  Save current server and create a new one")
     print("  --rollback             Rollback to a previous backup")
     print("  --delete <ver>         Delete specified version from bundles")
     print("  --change <ver>         Switch to specified version")
-    print("  --upgrade [force]      Upgrade server core to compatible version")
+    print("  --upgrade [force/ver]  Upgrade server core to compatible version")
     print("  --cleanup              Clean up server files to free up space")
     print("  --dump [keyword]       Create a compressed dump of log files")
     print("  --settings             Edit server properties and settings")
@@ -6281,18 +6296,35 @@ def main():
                 logger.info("Fetching available versions list")
                 download_version()
         elif sys.argv[1] == "--worlds":
-            logger.info("Managing worlds")
-            manage_worlds()
+            if len(sys.argv) > 2:
+                mode = sys.argv[2].lower()
+                if mode in ("import", "delete", "backup"):
+                    logger.info(f"Managing worlds with direct mode: {mode}")
+                    manage_worlds(mode)
+                else:
+                    print(f"\nInvalid argument for --worlds: {mode}")
+                    print("Available arguments: import, delete, backup")
+                    print("")
+                    sys.exit(1)
+            else:
+                logger.info("Managing worlds (interactive)")
+                manage_worlds()
         elif sys.argv[1] == "--new":
             logger.info("Creating new server")
             create_new_server()
         elif sys.argv[1] == "--upgrade":
-            if len(sys.argv) > 2 and sys.argv[2].lower() == "force":
-                logger.info("Force upgrading server")
-                upgrade_server(force=True)
+            if len(sys.argv) > 2:
+                second_arg = sys.argv[2].lower()
+                if second_arg == "force":
+                    logger.info("Force upgrading server (interactive mode)")
+                    upgrade_server(force=True)
+                else:
+                    version = sys.argv[2]
+                    logger.info(f"Upgrading directly to version: {version}")
+                    upgrade_server(target_version=version)
             else:
-                logger.info("Upgrading server")
-                upgrade_server(force=False)
+                logger.info("Upgrading server (interactive mode)")
+                upgrade_server()
         elif sys.argv[1] == "--version":
             if len(sys.argv) > 2 and sys.argv[2].lower() == "force":
                 logger.info("Force checking script version")
