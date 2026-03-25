@@ -49,7 +49,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "7.1"
+SCRIPT_VERSION = "7.2"
 SERVER_START_TIME = None
 SERVER_END_TIME = None
 USER_AGENT = "MCSM/" + SCRIPT_VERSION
@@ -99,26 +99,10 @@ def generate_offline_uuid(username: str) -> str:
 
 def setup_logger():
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-    if LOG_FILE.exists() and LOG_FILE.stat().st_size > 128 * 1024:
-        try:
-            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
-            archive_filename = f"{timestamp}.manager.log.gz"
-            archive_path = LOG_DIR / archive_filename
-            with open(LOG_FILE, 'rb') as f_in:
-                with gzip.open(archive_path, 'wb') as f_out:
-                    shutil.copyfileobj(f_in, f_out)
-            with open(LOG_FILE, 'w') as f:
-                f.truncate(0)
-            logger.info(f"Log file rotated: {archive_filename} (original size: {LOG_FILE.stat().st_size} bytes)")
-        except Exception as e:
-            logger.warning(f"Warning: Failed to rotate log file: {e}")
     logger = logging.getLogger("mc-manager")
     logger.setLevel(logging.INFO)
     if logger.handlers:
         return logger
-    logging.addLevelName(logging.INFO, "INFO ")
-    logging.addLevelName(logging.WARNING, "WARN ")
-    logging.addLevelName(logging.ERROR, "ERROR")
     formatter = logging.Formatter(
         fmt="%(asctime)s %(levelname)s > %(message)s",
         datefmt="%Y/%m/%d %H:%M:%S"
@@ -127,6 +111,29 @@ def setup_logger():
     file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
+    if LOG_FILE.exists() and LOG_FILE.stat().st_size > 128 * 1024:
+        try:
+            file_handler.close()
+            logger.removeHandler(file_handler)
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+            archive_filename = f"{timestamp}.manager.log.gz"
+            archive_path = LOG_DIR / archive_filename
+            with open(LOG_FILE, 'rb') as f_in:
+                with gzip.open(archive_path, 'wb') as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+            with open(LOG_FILE, 'w') as f:
+                f.truncate(0)
+            new_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
+            new_handler.setLevel(logging.INFO)
+            new_handler.setFormatter(formatter)
+            logger.addHandler(new_handler)
+            logger.info(f"Log file rotated: {archive_filename} (original size: {LOG_FILE.stat().st_size} bytes)")
+        except Exception as e:
+            try:
+                logger.addHandler(file_handler)
+            except Exception:
+                pass
+            logger.warning(f"Warning: Failed to rotate log file: {e}")
     return logger
 
 def format_uptime_duration(seconds):
