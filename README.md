@@ -1,244 +1,248 @@
-# Minecraft Server Manager
+<h1 align="center">MC-Server-Manager</h1>
 
-## Introduction
-A powerful Minecraft server management tool written in Python (distributed as `start.sh`), currently targeting Purpur servers. This tool provides a comprehensive server management solution including version management, backup and recovery, plugin management, world management, logging, and task-safety mechanisms, making server administration simpler and more reliable.
+<p align="center">All-in-one Purpur Minecraft server management tool — version control, backup & recovery, plugin management, world management, crash analysis, and system maintenance from a single script.</p>
 
-## Key Features
+<p align="center">
+  <a href="#"><img src="https://img.shields.io/badge/Python-3.8+-blue" alt="Python"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Java-8+-red" alt="Java"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Server-Purpur-8A2BE2" alt="Purpur"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey" alt="Platform"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="License"></a>
+  <a href="https://github.com/Admin-SR40/MC-Server-Manager/releases/latest"><img src="https://img.shields.io/badge/Version-8.0-orange" alt="Version"></a>
+</p>
 
-### Server Management
-- **One-Click Start**: Automatically configure and start Minecraft server
-- **Version Management**: Download, switch, and manage multiple server versions
-- **Auto Configuration**: Intelligent Java environment detection and configuration
-- **Server Crash Analysis**: Generate crash report when crash detected
-- **Automatic EULA**: Automatically handle Mojang EULA agreement
-- **Server Settings**: Interactive server configuration editor
-- **Player Management**: Manage banned players, IPs, and whitelist
-- **Task Locking**: Prevent duplicate instances and handle interrupted tasks
-- **Structured Logging**: Persistent logs written to `logs/manager.log` with automatic rotation
-
-### Backup & Recovery
-- **Version Backup**: Save current server state as specific versions
-- **Timestamped Backups**: Create automatic backups with timestamps
-- **Quick Rollback**: One-click rollback to any previous backup point
-- **Incremental Management**: Smart backup file management to save space
-
-### Plugin System
-- **Plugin Management**: View, enable, disable all plugins
-- **Dependency Checking**: Automatic plugin dependency detection to prevent conflicts
-- **Batch Operations**: Support batch enable/disable plugins
-- **Safe Mode**: Automatically disable plugins during upgrades for data safety
-- **Dependency Chain**: Automatic dependency chain management
-
-### World Management
-- **World Reset**: Safely delete and regenerate worlds
-- **Seed Configuration**: Flexible world generation seed settings
-- **Selective Management**: Support single or multiple world management
-- **World Status**: Display world size and corruption status
-- **Easy Import/Export**: Make backup/rollback much easier 
-
-### System Maintenance
-- **File Cleanup**: Automatically clean logs and temporary files to free disk space
-- **Log Dumping**: Compress and archive server logs with search functionality
-- **Integrity Verification**: Automatic MD5 checksum verification for downloads
-- **Self-Update**: Automatic script updates to latest version
-- **Memory Optimization**: Smart RAM allocation based on system resources
-- **Container Support**: Docker and container environment detection
-
-### Security & Monitoring
-- **Duplicate Prevention**: Task lock mechanism prevents multiple instances
-- **Process Monitoring**: Check if previous tasks are still running
-- **Interruption Recovery**: Resume interrupted operations safely
-- **Time Tracking**: Display task duration and interruption times
-- **Device Fingerprint**: Detect environment changes to prevent data loss
-
-## System Requirements
-- Python 3.8 or higher is recommended
-- Java 8 or higher (for running Minecraft server)
-- Dependencies: PyYAML
-- Operating Systems: Windows, Linux, macOS
-- Container Environments: Docker, Kubernetes (supported)
+---
 
 ## Installation
-1. Download the `start.sh` script to your server directory.
-2. Ensure Python 3.8+ is available in your environment.
-3. Install required Python dependency:
-   `pip install PyYAML`
-4. Make the script executable if using Unix-like systems:
-   `chmod +x start.sh`
-5. Run the script:
-   - Windows: `python start.sh [options]`
-   - Linux / macOS: `./start.sh [options]`
 
-## Migrating Existing Servers
-If you already have a Minecraft server created **outside** this script,
-you cannot manage it directly without converting its structure.
+1. Install **Python 3.8+** and **Java 8+**
+2. Install PyYAML: `pip install PyYAML`
+3. Download `start.sh` and place it in your server directory
+4. Make it executable (Unix): `chmod +x start.sh`
+5. Run: `./start.sh --get <version>` → `./start.sh --new` → `./start.sh --init auto`
+6. Start the server: `./start.sh`
 
-To solve this, use:
-- `./start.sh --standardize`
+---
 
-This command may:
-- Move configuration files into the `config/` directory
-- Move world folders into the `worlds/` directory
-- Rename the server core jar to `core.jar`
-- Create required management directories
+## Features
 
-Although the script is designed to be safe, it **may not** cover all custom setups.
-You should always backup your server files first!
+<details>
+<summary>Server Management</summary>
 
-After standardization, you should initialize the server:
-- Use `--init` for manual configuration
-- Use `--init auto` for automatic setup (recommended for beginners)
+- **One-click start** with automatic Java detection and memory allocation
+- **PTY terminal (Linux)** — full JLine features: tab completion, command history, colored output
+- **Smart memory allocation** — detects system/container RAM, calculates optimal heap size with formula `(29 × MAX + 8192) / 60`
+- **Automatic EULA** acceptance and environment validation
+- **Interactive settings editor** — graphical-style text UI for `server.properties`
+- **Player management** — ban lists, IP bans, whitelist, operators
+- **Task locking** — prevents duplicate instances, handles interrupted operations
+- **Environment fingerprinting** — detects device changes to prevent data loss
+- **Structured logging** — persistent logs in `logs/manager.log` with auto-rotation at 128 KB
 
-## Command Reference
+</details>
 
-### Basic Commands
-- `(no command)` - Start the server
-- `--init` - Initialize server configuration manually
-- `--init auto` - Automatic server configuration with intelligent defaults
-- `--info` - Show current server configuration and environment info
-- `--help` - Show help information
-- `--version` - Show script version and check for updates
-- `--version force` - Force download latest script version
-- `--license` - Show the open source license
+<details>
+<summary>Version Management</summary>
 
-### Version Management
-- `--get` - Show available Purpur server versions
-- `--get <version>` - Download specific Purpur server version
-- `--list` - List all available bundled versions
-- `--new` - Create a new server instance
-- `--change <version>` - Switch to specified version
-- `--upgrade` - Upgrade server core to a compatible version
-- `--upgrade force` - Force upgrade and show all versions
-- `--delete <version>` - Delete specified version or backup
+- Download Purpur server versions from the official API
+- Switch between installed versions with one command
+- Smart upgrades within compatible major versions (force mode available for cross-version)
+- List, save, and delete version bundles
+- MD5 integrity verification on all downloads
 
-### Backup Management
-- `--save <version>` - Save current version to bundles
-- `--backup` - Create timestamped backup of current version
-- `--rollback` - Rollback to previous backup
+</details>
 
-### Plugin Management
-- `--plugins` - Manage plugins with dependency awareness
-- `--plugins analyze` - Analyze plugin dependency tree
+<details>
+<summary>Backup & Recovery</summary>
 
-### World Management
-- `--worlds` - Manage worlds (reset, backup, restore)
+- **Version snapshots** — save current server state as a named version
+- **Timestamped backups** — automatic backups with version and timestamp
+- **One-click rollback** — interactive rollback to any previous backup point
+- **World backups** — selective world backup and restore
 
-### Server Configuration
-- `--settings` - Edit server properties interactively
-- `--players` - Manage banned players, IPs, and whitelist
+</details>
 
-### System Maintenance
-- `--cleanup` - Clean up server files to free space
-- `--dump` - Create compressed dump of log files
-- `--dump <keywords>` - Search and dump specific log content
+<details>
+<summary>Plugin Management</summary>
+
+- View, enable, and disable all plugins
+- **Dependency-aware** — automatic dependency detection prevents conflicts
+- **Cascading disable** — automatically disables dependent plugins
+- **Dependency tree analyzer** — CLI command to visualize plugin relationships
+- Batch operations and safe mode during upgrades
+
+</details>
+
+<details>
+<summary>World Management</summary>
+
+- Reset, backup, restore, and import worlds
+- Configure world generation seeds
+- Display world size and corruption status
+- Selective single or multi-world operations
+
+</details>
+
+<details>
+<summary>Crash Analysis</summary>
+
+- Automatically detects server crashes and abnormal exits
+- Scans logs for 14 error patterns (OOM, deadlock, stack overflow, etc.)
+- Checks plugin dependency chains for missing required plugins
+- Generates structured crash reports with environment info, error contexts, and timelines
+- Filters out false positives (mistyped commands, harmless JVM warnings)
+- Interactive prompts for suspicious log patterns even on clean exits
+
+</details>
+
+<details>
+<summary>System Maintenance</summary>
+
+- **File cleanup** — removes temporary files, old logs, and stale backups
+- **Log dumping** — compressed log archives with keyword search
+- **Self-update** — check for and download latest script version
+- **Container support** — Docker and Kubernetes environment detection with cgroup memory limits
+- **Console filtering** — suppresses harmless startup warnings (JOML Unsafe, incubator modules, JLine terminal fallback)
+
+</details>
+
+---
+
+## Commands
+
+<details>
+<summary>Basic</summary>
+
+| Command | Description |
+|---------|-------------|
+| `(no command)` | Start the server |
+| `--init` | Manual server configuration |
+| `--init auto` | Automatic configuration with intelligent defaults |
+| `--info` | Show server configuration and environment info |
+| `--help` | Show help information |
+| `--version` | Show script version and check for updates |
+| `--version force` | Force download latest script version |
+| `--license` | Show the open source license |
+
+</details>
+
+<details>
+<summary>Version & Backup</summary>
+
+| Command | Description |
+|---------|-------------|
+| `--get` | List available Purpur server versions |
+| `--get <version>` | Download a specific version (e.g. `--get 1.21.5`) |
+| `--list` | List installed version bundles |
+| `--new` | Create a new server from an installed version |
+| `--change <version>` | Switch to a different installed version |
+| `--upgrade` | Upgrade to a compatible newer version |
+| `--upgrade force` | Show all versions including incompatible ones |
+| `--delete <version>` | Delete a version or backup |
+| `--save <version>` | Save current server as a named version |
+| `--backup` | Create a timestamped backup |
+| `--rollback` | Interactive rollback to a previous backup |
+
+</details>
+
+<details>
+<summary>Plugins & Worlds</summary>
+
+| Command | Description |
+|---------|-------------|
+| `--plugins` | Manage plugins with dependency awareness |
+| `--plugins analyze` | Analyze and display plugin dependency tree |
+| `--worlds` | Manage worlds (reset, backup, restore, import) |
+
+</details>
+
+<details>
+<summary>Configuration & Maintenance</summary>
+
+| Command | Description |
+|---------|-------------|
+| `--settings` | Interactive server properties editor |
+| `--players` | Manage banned players, IP bans, whitelist, operators |
+| `--cleanup` | Clean up temporary files and free disk space |
+| `--dump` | Create compressed dump of all log files |
+| `--dump <keywords>` | Search and dump specific log content |
+| `--standardize` | Migrate an existing server into the managed structure |
+
+</details>
+
+---
 
 ## Configuration
-Configuration file is located at `config/version.cfg` and includes:
 
-- `version`: Minecraft server version
-- `max_ram`: Maximum memory allocation (MB)
-- `java_path`: Java executable path
-- `additional_list`: Additional files/directories excluded from backups
-- `additional_parameters`: Extra server startup parameters
-- `device`: Generated device ID used for environment safety checks
+<details>
+<summary>config/version.cfg</summary>
+
+| Key | Description |
+|-----|-------------|
+| `version` | Minecraft server version |
+| `max_ram` | Maximum memory allocation (MB) |
+| `java_path` | Java executable path |
+| `additional_list` | Extra files/directories excluded from backups |
+| `additional_parameters` | Additional JVM startup parameters |
+| `device` | Generated device fingerprint for environment safety checks |
+
+</details>
+
+---
 
 ## Directory Structure
-This script uses following structure to make it easier to manage:
+
 ```
 ./
-├── start.sh                                        # Main script
-├── core.jar                                        # Server core
-├── config/                                         # Configuration directory
-│       ├── version.cfg                             # Version configuration
-│       └── server.properties                       # Server properties
-├── bundles/                                        # Version and backup storage
-│       └── [version]/
-│               ├── core.zip                        # Server core package
-│               ├── server.zip                      # Full server backup
-│               ├── *.zip                           # Timestamped backups
-│               └── worlds
-│                       └── worlds_*.zip            # Timestamped world backups
-├── plugins/                                        # Plugin directory
-├── worlds/                                         # World data
-├── logs/                                           # Server logs
-├── eula.txt                                        # EULA agreement
-└── task.lock                                       # Task lock file
+├── start.sh                                         # Main script
+├── core.jar                                         # Server core
+├── config/
+│   ├── version.cfg                                  # Tool configuration
+│   └── server.properties                            # Server properties
+├── bundles/                                         # Version & backup storage
+│   └── [version]/
+│       ├── core.zip                                 # Server core package
+│       ├── server.zip                               # Full server snapshot
+│       ├── *.zip                                    # Timestamped backups
+│       └── worlds/
+│           └── worlds_*.zip                         # World backups
+├── plugins/                                         # Plugin directory
+├── worlds/                                          # World data
+├── logs/
+│   ├── manager.log                                  # Tool log
+│   └── latest.log                                   # Server log
+├── eula.txt                                         # EULA agreement
+└── task.lock                                        # Task lock file
 ```
 
-## Advanced Features
+---
 
-### Smart Memory Allocation
-- Automatic detection of system memory (including container limits)
-- Allocate base memory by using formula: (29 * MAX + 8192) / 60, capped at 4GB
-- Plugin-based memory calculation
-- Player capacity estimation
-- Container environment optimization
+## Migrating Existing Servers
 
-### Dependency-Aware Plugin Management
-Automatically detects plugin dependencies, warns about potential impacts when disabling plugins, and supports automatic dependency chain disabling.
+If you already have a Minecraft server created outside this tool, use `--standardize` to convert its structure:
 
-### Intelligent Java Detection
-- Automatic discovery of Java installations
-- Version compatibility checking
-- Vendor identification (OpenJDK, Oracle, GraalVM, etc.)
-- Custom Java path validation
+```bash
+./start.sh --standardize
+```
 
-### Task Safety System
-- **Lock Mechanism**: Prevents multiple script instances
-- **Interruption Recovery**: Resumes interrupted operations
-- **Time Tracking**: Shows task duration and creation time
-- **Process Validation**: Checks if locked processes are still running
+This will move config files into `config/`, world folders into `worlds/`, and rename the server JAR to `core.jar`. **Always back up your server files first.** After standardization, run `--init auto` to complete the setup.
 
-### Smart Version Upgrades
-Supports safe upgrades within major versions and cross-version upgrades in force mode (with warnings).
-
-### Integrity Protection
-All downloaded files are verified with MD5 checksums to ensure file integrity and security.
-
-### Interactive Configuration
-- Graphical-style text interface for server settings
-- Real-time configuration preview
-- Validation for all input parameters
-- Batch editing support
-- Smart auto selections
-
-### Force Mode Operations
-- `--version force` - Bypass version check and download latest script
-- `--upgrade force` - Show all versions including incompatible ones
-
-### Automatic Crash Analysis
-- Automatically detect server crashes and abnormal exits
-- Differentiate between intentional shutdowns and potential failure scenarios
-- Scan logs to identify common issues such as memory exhaustion, plugin conflicts, and startup errors
-- Generate readable crash analysis reports with server uptime and timestamps
-- Prompt users for interactive analysis when suspicious log patterns are detected
+---
 
 ## Troubleshooting
 
-1. Python dependency errors
-    - Ensure PyYAML is installed: pip install PyYAML
+| Issue | Solution |
+|-------|----------|
+| PyYAML not found | `pip install PyYAML` |
+| Java path issues | Run `--init` to reconfigure |
+| Port conflicts | Modify `server-port` in `config/server.properties` |
+| Permission errors | Ensure execute permissions and read/write access |
+| Log inspection | Check `./logs/manager.log` for detailed diagnostics |
 
-2. Java path issues
-    - Use --init to reconfigure Java path
-    - Ensure Java is properly installed
+For additional help, [open an issue](https://github.com/Admin-SR40/MC-Server-Manager/issues/new) or visit the [Wiki](https://deepwiki.com/Admin-SR40/MC-Server-Manager).
 
-3. Port conflicts
-    - Tool automatically detects port usage
-    - Modify server-port in config/server.properties
-
-4. Permission issues
-    - Ensure script has execute permissions
-    - Ensure read/write permissions for server directory
-
-5. For more
-    - Check the manager log at: ./logs/manager.log
-    - You can also create a Issue at [here](https://github.com/Admin-SR40/MC-Server-Manager/issues/new)
-
-## Wiki & Documentation
-For detailed documentation, tutorials, and best practices, visit the [AI-Generated Wiki](https://deepwiki.com/Admin-SR40/MC-Server-Manager)
+---
 
 ## License
-This project is licensed under the **MIT** License. See [LICENSE file](https://github.com/Admin-SR40/MC-Server-Manager/blob/main/LICENSE) for details.
 
-## Contributing
-Issues and Pull Requests are welcome to improve this project.
+This project is licensed under the **MIT License**. See [LICENSE](LICENSE) for details.
