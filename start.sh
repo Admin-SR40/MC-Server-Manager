@@ -41,6 +41,14 @@ import hashlib
 import socket
 import time
 import logging
+from collections import deque
+import traceback
+import pty
+import select
+try:
+    import termios
+except ImportError:
+    termios = None
 from pathlib import Path
 
 try:
@@ -49,7 +57,7 @@ except ImportError:
     print("\nError: PyYAML is not installed.\nPlease install it with: pip install PyYAML\n")
     sys.exit(1)
 
-SCRIPT_VERSION = "7.2"
+SCRIPT_VERSION = "8.0"
 SERVER_START_TIME = None
 SERVER_END_TIME = None
 USER_AGENT = "MCSM/" + SCRIPT_VERSION
@@ -86,6 +94,53 @@ BASE_EXCLUDE_LIST = [
     "thumbs.db",
     "worlds/*/session.lock"
 ]
+
+
+# ── Utility functions ──────────────────────────────────────────────
+
+def print_banner(title, width=50):
+    """Print a centered banner with '=' separators."""
+    print()
+    print("=" * width)
+    print(title.center(width))
+    print("=" * width)
+
+def confirm_action(prompt, default_no=True):
+    """Ask a Y/N question, return True if user confirms."""
+    default_hint = " (Y/N): " if default_no else " (y/N): "
+    while True:
+        choice = input(prompt + default_hint).strip().upper()
+        if choice == 'Y':
+            return True
+        if choice == 'N':
+            return False
+        print("Please enter Y or N.")
+
+def log_and_print(msg, level="info"):
+    """Log a message and print it to console."""
+    if level == "error":
+        logger.error(msg)
+    elif level == "warning":
+        logger.warning(msg)
+    else:
+        logger.info(msg)
+    print(msg)
+
+def safe_rmtree(path):
+    """Safely remove a directory tree, ignoring errors."""
+    p = Path(path) if not isinstance(path, Path) else path
+    if p.exists():
+        shutil.rmtree(p, ignore_errors=True)
+
+def _unlock_with_logging(op_name):
+    """Remove task lock with standard logging."""
+    logger.info(f"Removing task lock for {op_name} operation")
+    if remove_lock():
+        logger.info("Task lock removed successfully")
+    else:
+        logger.error(f"Failed to remove task lock for {op_name} operation")
+
+# ───────────────────────────────────────────────────────────────────
 
 def generate_offline_uuid(username: str) -> str:
     data = f"OfflinePlayer:{username}".encode('utf-8')
@@ -169,46 +224,46 @@ def get_device_id():
         hostname = socket.gethostname()
         logger.info(f"Generating device ID. Hostname: {hostname}")
         android_id = None
-        try:
-            result = subprocess.run(
-                ['getprop', 'ro.serialno'],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=5
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                android_id = result.stdout.strip()
-                logger.info(f"Found Android serial number: {android_id}")
-        except (subprocess.SubprocessError, FileNotFoundError) as e:
-            logger.info(f"Could not get Android serial number: {e}")
-            pass
-        if not android_id:
+        is_android = os.path.exists("/system/build.prop")
+        if is_android:
             try:
                 result = subprocess.run(
-                    ['getprop', 'ro.product.model'],
+                    ['getprop', 'ro.serialno'],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
                     timeout=5
                 )
                 if result.returncode == 0 and result.stdout.strip():
-                    model = result.stdout.strip()
-                    logger.info(f"Found device model: {model}")
-                    result2 = subprocess.run(
-                        ['getprop', 'ro.product.manufacturer'],
+                    android_id = result.stdout.strip()
+                    logger.info(f"Found Android serial number: {android_id}")
+            except (subprocess.SubprocessError, FileNotFoundError) as e:
+                logger.info(f"Could not get Android serial number: {e}")
+            if not android_id:
+                try:
+                    result = subprocess.run(
+                        ['getprop', 'ro.product.model'],
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         text=True,
                         timeout=5
                     )
-                    manufacturer = result2.stdout.strip() if result2.returncode == 0 else "unknown"
-                    logger.info(f"Found device manufacturer: {manufacturer}")
-                    android_id = f"{manufacturer}:{model}"
-                    logger.info(f"Created device ID from model and manufacturer: {android_id}")
-            except (subprocess.SubprocessError, FileNotFoundError) as e:
-                logger.info(f"Could not get device model/manufacturer: {e}")
-                pass
+                    if result.returncode == 0 and result.stdout.strip():
+                        model = result.stdout.strip()
+                        logger.info(f"Found device model: {model}")
+                        result2 = subprocess.run(
+                            ['getprop', 'ro.product.manufacturer'],
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            text=True,
+                            timeout=5
+                        )
+                        manufacturer = result2.stdout.strip() if result2.returncode == 0 else "unknown"
+                        logger.info(f"Found device manufacturer: {manufacturer}")
+                        android_id = f"{manufacturer}:{model}"
+                        logger.info(f"Created device ID from model and manufacturer: {android_id}")
+                except (subprocess.SubprocessError, FileNotFoundError) as e:
+                    logger.info(f"Could not get device model/manufacturer: {e}")
         if not android_id:
             android_id = hostname
             logger.info(f"Using hostname as device identifier: {android_id}")
@@ -613,7 +668,7 @@ def edit_server_settings():
             elif setting['type'] == 'enum':
                 print("\nAvailable options:")
                 for j, option in enumerate(setting['options'], 1):
-                    print(f"{j}. {option}")
+                    print(f" {j}. {option}")
                 while True:
                     enum_choice = input("\nSelect option: ").strip()
                     if not enum_choice:
@@ -1929,14 +1984,18 @@ def create_new_server():
         print("\n" + "=" * 50)
         print("               New Server Creation")
         print("=" * 50)
-        try:
-            config = load_config()
-            current_version = config.get("version", "unknown")
-            logger.info(f"Current server version: {current_version}")
-        except Exception as e:
-            logger.error(f"Error loading configuration: {e}")
+        if CONFIG_FILE.exists():
+            try:
+                config = load_config()
+                current_version = config.get("version", "unknown")
+                logger.info(f"Current server version: {current_version}")
+            except Exception as e:
+                logger.error(f"Error loading configuration: {e}")
+                current_version = "unknown"
+                print("Warning: Could not load config, using default version 'unknown'")
+        else:
             current_version = "unknown"
-            print("Warning: Could not load config, using default version 'unknown'")
+            logger.info("No existing configuration found, starting fresh setup")
         available_versions = []
         if BUNDLES_DIR.exists():
             logger.info("Scanning bundles directory for available versions")
@@ -1955,7 +2014,7 @@ def create_new_server():
         print("=" * 30)
         sorted_versions = sorted(available_versions, key=lambda v: [int(n) for n in v.split('.')], reverse=True)
         for i, version in enumerate(sorted_versions, 1):
-            print(f"{i}. {version}")
+            print(f" {i}. {version}")
             logger.info(f"Available version {i}: {version}")
         print("=" * 30)
         try:
@@ -2206,6 +2265,48 @@ def show_version_info(version):
     except Exception as e:
         print(f"Error reading version info: {e}")
 
+def _list_remote_versions():
+    """Fetch and display available Purpur server versions."""
+    logger.info("Fetching available versions list from PurpurMC API")
+    try:
+        start_time = time.time()
+        request = urllib.request.Request("https://api.purpurmc.org/v2/purpur")
+        request.add_header("User-Agent", USER_AGENT)
+        with urllib.request.urlopen(request, timeout=10) as response:
+            elapsed_time = time.time() - start_time
+            logger.info(f"API response received in {elapsed_time:.2f}s, status: {response.status}")
+            data = json.loads(response.read().decode())
+            versions = data.get("versions", [])
+            logger.info(f"Found {len(versions)} total versions")
+            version_groups = {}
+            for v in versions:
+                major_version = ".".join(v.split(".")[:2])
+                if major_version not in version_groups:
+                    version_groups[major_version] = []
+                version_groups[major_version].append(v)
+            logger.info(f"Grouped into {len(version_groups)} major version groups")
+            print("\nAvailable Versions:")
+            print("=" * 50)
+            for major, minors in sorted(version_groups.items(), key=lambda x: tuple(map(int, x[0].split('.'))), reverse=True):
+                sorted_minors = sorted(minors, key=lambda v: tuple(map(int, v.split('.'))), reverse=True)
+                print(f"[{major}]: {', '.join(sorted_minors)}")
+                logger.info(f"Major version {major}: {sorted_minors}")
+            print("=" * 50)
+            print("")
+    except urllib.error.HTTPError as e:
+        logger.error(f"HTTP error fetching available versions: {e.code} - {e.reason}")
+        print(f"Error fetching available versions: {e.code} - {e.reason}\n")
+    except urllib.error.URLError as e:
+        logger.error(f"URL error fetching available versions: {e.reason}")
+        print(f"Error: Could not connect to server - {e.reason}\n")
+    except socket.timeout:
+        logger.error("Timeout fetching available versions")
+        print("Error: Connection timeout while fetching version list\n")
+    except Exception as e:
+        logger.error(f"Unexpected error fetching versions: {type(e).__name__}: {e}")
+        print(f"Error fetching available versions: {e}\n")
+
+
 def download_version(version=None):
     logger.info(f"Starting download_version function, version parameter: {version}")
     command = ["--get"]
@@ -2218,49 +2319,7 @@ def download_version(version=None):
         return
     try:
         if version is None:
-            logger.info("No version specified, fetching available versions list")
-            try:
-                logger.info("Making API request to get available versions")
-                start_time = time.time()
-                request = urllib.request.Request("https://api.purpurmc.org/v2/purpur")
-                request.add_header("User-Agent", USER_AGENT)
-                with urllib.request.urlopen(request, timeout=10) as response:
-                    elapsed_time = time.time() - start_time
-                    logger.info(f"API response received in {elapsed_time:.2f}s, status: {response.status}")
-                    data = json.loads(response.read().decode())
-                    versions = data.get("versions", [])
-                    logger.info(f"Found {len(versions)} total versions")
-                    version_groups = {}
-                    for v in versions:
-                        major_version = ".".join(v.split(".")[:2])
-                        if major_version not in version_groups:
-                            version_groups[major_version] = []
-                        version_groups[major_version].append(v)
-                    logger.info(f"Grouped into {len(version_groups)} major version groups")
-                    print("\nAvailable Versions:")
-                    print("=" * 50)
-                    for major, minors in sorted(version_groups.items(), key=lambda x: tuple(map(int, x[0].split('.'))), reverse=True):
-                        sorted_minors = sorted(minors, key=lambda v: tuple(map(int, v.split('.'))), reverse=True)
-                        print(f"[{major}]: {', '.join(sorted_minors)}")
-                        logger.info(f"Major version {major}: {sorted_minors}")
-                    print("=" * 50)
-                    print("")
-            except urllib.error.HTTPError as e:
-                logger.error(f"HTTP error fetching available versions: {e.code} - {e.reason}")
-                print(f"Error fetching available versions: {e.code} - {e.reason}\n")
-                return
-            except urllib.error.URLError as e:
-                logger.error(f"URL error fetching available versions: {e.reason}")
-                print(f"Error: Could not connect to server - {e.reason}\n")
-                return
-            except socket.timeout:
-                logger.error("Timeout fetching available versions")
-                print("Error: Connection timeout while fetching version list\n")
-                return
-            except Exception as e:
-                logger.error(f"Unexpected error fetching versions: {type(e).__name__}: {e}")
-                print(f"Error fetching available versions: {e}\n")
-                return
+            _list_remote_versions()
         else:
             logger.info(f"Processing specific version: {version}")
             if not re.match(r"^\d+\.\d+(\.\d+)?$", version):
@@ -3696,19 +3755,28 @@ def parse_java_version(output):
             vendor = "Corretto"
     return version, vendor
 
+_config_cache = {}
+_config_mtime = 0
+
 def load_config():
+    global _config_cache, _config_mtime
     if not CONFIG_FILE.exists():
         logger.error("Configuration file not found")
         print(f"\nError: Configuration file not found at {CONFIG_FILE}")
         print("Please run with --init to create a new configuration\n")
         sys.exit(1)
+    current_mtime = CONFIG_FILE.stat().st_mtime
+    if _config_cache and _config_mtime == current_mtime:
+        return dict(_config_cache)
     config = configparser.ConfigParser()
     config.read(CONFIG_FILE)
     if "SERVER" not in config:
         logger.error("Invalid configuration format")
         print("Error: Invalid configuration format")
         sys.exit(1)
-    return config["SERVER"]
+    _config_cache = dict(config["SERVER"])
+    _config_mtime = current_mtime
+    return dict(_config_cache)
 
 def show_info():
     try:
@@ -3810,23 +3878,7 @@ def save_version(version):
             dest = temp_dir / item_name
             try:
                 if item.is_dir():
-                    if hasattr(shutil, 'copytree') and hasattr(shutil.copytree, '__code__'):
-                        import inspect
-                        sig = inspect.signature(shutil.copytree)
-                        if 'dirs_exist_ok' in sig.parameters:
-                            shutil.copytree(item, dest, symlinks=True, dirs_exist_ok=True)
-                        else:
-                            if dest.exists():
-                                logger.info(f"Removing existing destination directory: {dest}")
-                                shutil.rmtree(dest)
-                            shutil.copytree(item, dest, symlinks=True)
-                            logger.info(f"Copied directory (legacy method): {item_name}")
-                    else:
-                        if dest.exists():
-                            logger.info(f"Removing existing destination directory: {dest}")
-                            shutil.rmtree(dest)
-                        shutil.copytree(item, dest, symlinks=True)
-                        logger.info(f"Copied directory (fallback method): {item_name}")
+                    shutil.copytree(item, dest, symlinks=True, dirs_exist_ok=True)
                 else:
                     shutil.copy2(item, dest)
                 copied_count += 1
@@ -3853,21 +3905,16 @@ def save_version(version):
     except Exception as e:
         logger.error(f"Error saving version: {e}", exc_info=True)
         print(f"Error saving version: {e}\n")
-        import traceback
         traceback.print_exc()
     finally:
         if temp_dir.exists():
             logger.info(f"Cleaning up temporary directory: {temp_dir}")
             try:
-                shutil.rmtree(temp_dir, ignore_errors=True)
+                safe_rmtree(temp_dir)
                 logger.info(f"Successfully removed temporary directory: {temp_dir}")
             except Exception as cleanup_error:
                 logger.error(f"Failed to remove temporary directory {temp_dir}: {cleanup_error}")
-        logger.info("Removing task lock for save_version operation")
-        if remove_lock():
-            logger.info("Task lock removed successfully")
-        else:
-            logger.error("Failed to remove task lock")
+        _unlock_with_logging("save_version")
 
 def backup_version():
     logger.info("Starting backup_version function")
@@ -3917,23 +3964,7 @@ def backup_version():
             dest = temp_dir / item_name
             try:
                 if item.is_dir():
-                    if hasattr(shutil, 'copytree') and hasattr(shutil.copytree, '__code__'):
-                        import inspect
-                        sig = inspect.signature(shutil.copytree)
-                        if 'dirs_exist_ok' in sig.parameters:
-                            shutil.copytree(item, dest, symlinks=True, dirs_exist_ok=True)
-                        else:
-                            if dest.exists():
-                                logger.info(f"Removing existing destination directory: {dest}")
-                                shutil.rmtree(dest)
-                            shutil.copytree(item, dest, symlinks=True)
-                            logger.info(f"Copied directory (legacy method): {item_name}")
-                    else:
-                        if dest.exists():
-                            logger.info(f"Removing existing destination directory: {dest}")
-                            shutil.rmtree(dest)
-                        shutil.copytree(item, dest, symlinks=True)
-                        logger.info(f"Copied directory (fallback method): {item_name}")
+                    shutil.copytree(item, dest, symlinks=True, dirs_exist_ok=True)
                 else:
                     shutil.copy2(item, dest)
                     logger.info(f"Copied file: {item_name}")
@@ -3961,21 +3992,16 @@ def backup_version():
     except Exception as e:
         logger.error(f"Error creating backup: {e}", exc_info=True)
         print(f"Error creating backup: {e}\n")
-        import traceback
         traceback.print_exc()
     finally:
         if temp_dir.exists():
             logger.info(f"Cleaning up temporary directory: {temp_dir}")
             try:
-                shutil.rmtree(temp_dir, ignore_errors=True)
+                safe_rmtree(temp_dir)
                 logger.info(f"Successfully removed temporary directory: {temp_dir}")
             except Exception as cleanup_error:
                 logger.error(f"Failed to remove temporary directory {temp_dir}: {cleanup_error}")
-        logger.info("Removing task lock for backup operation")
-        if remove_lock():
-            logger.info("Task lock removed successfully")
-        else:
-            logger.error("Failed to remove task lock")
+        _unlock_with_logging("backup")
 
 def delete_version(version):
     logger.info(f"Starting delete_version function for version: {version}")
@@ -4041,11 +4067,7 @@ def delete_version(version):
         logger.error(f"Unexpected error in delete_version function: {e}", exc_info=True)
         print(f"Error deleting version: {e}\n")
     finally:
-        logger.info("Removing task lock for delete operation")
-        if remove_lock():
-            logger.info("Task lock removed successfully")
-        else:
-            logger.error("Failed to remove task lock for delete operation")
+        _unlock_with_logging("delete")
 
 def change_version(target_version):
     logger.info(f"Starting change_version function for target version: {target_version}")
@@ -4145,14 +4167,9 @@ def change_version(target_version):
     except Exception as e:
         logger.error(f"Error switching version: {e}", exc_info=True)
         print(f"Error switching version: {e}\n")
-        import traceback
         traceback.print_exc()
     finally:
-        logger.info("Removing task lock for change version operation")
-        if remove_lock():
-            logger.info("Task lock removed successfully")
-        else:
-            logger.error("Failed to remove task lock for change version operation")
+        _unlock_with_logging("change_version")
 
 def cleanup_files():
     if not create_lock(["--cleanup"]):
@@ -4344,13 +4361,12 @@ def dump_logs():
             except Exception as e:
                 logger.error(f"Error creating log search: {e}", exc_info=True)
                 print(f"Error creating log search: {e}")
-                import traceback
                 traceback.print_exc()
             finally:
                 if temp_dir.exists():
                     logger.info(f"Cleaning up temporary directory: {temp_dir}")
                     try:
-                        shutil.rmtree(temp_dir, ignore_errors=True)
+                        safe_rmtree(temp_dir)
                         logger.info(f"Temporary directory removed: {temp_dir}")
                     except Exception as cleanup_error:
                         logger.error(f"Failed to remove temporary directory {temp_dir}: {cleanup_error}")
@@ -4400,7 +4416,7 @@ def dump_logs():
                             file_path = os.path.join(root, file)
                             arcname = os.path.relpath(file_path, temp_dir)
                             zipf.write(file_path, arcname)
-                shutil.rmtree(temp_dir, ignore_errors=True)
+                safe_rmtree(temp_dir)
                 logger.info(f"Temporary directory cleaned up: {temp_dir}")
                 file_size = os.path.getsize(output_file)
                 logger.info(f"Full log dump completed: {output_file}, size: {format_file_size(file_size)}")
@@ -4435,17 +4451,12 @@ def dump_logs():
             except Exception as e:
                 logger.error(f"Error creating log dump: {e}", exc_info=True)
                 print(f"Error creating log dump: {e}\n")
-                import traceback
                 traceback.print_exc()
                 if temp_dir.exists():
                     logger.info(f"Cleaning up temporary directory after error: {temp_dir}")
-                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    safe_rmtree(temp_dir)
     finally:
-        logger.info("Removing task lock for dump_logs operation")
-        if remove_lock():
-            logger.info("Task lock removed successfully")
-        else:
-            logger.error("Failed to remove task lock for dump_logs operation")
+        _unlock_with_logging("dump_logs")
 
 def check_config_file():
     if not CONFIG_FILE.exists():
@@ -4551,7 +4562,9 @@ def analyze_log_content(data):
     for i, line in enumerate(log_lines):
         line = line.strip()
         if not line:
-            continue    
+            continue
+        if "Unknown or incomplete command" in line:
+            continue
         is_error_line = False
         if 'WARN]' in line or 'ERROR]' in line:
             is_error_line = True
@@ -5038,12 +5051,10 @@ def generate_crash_report(report_file, data, log_file, exit_code, uptime_display
     except IOError as e:
         logger.error(f"IOError writing crash report to {report_file}: {e}")
         print(f"Error writing crash report: {e}\n")
-        import traceback
         traceback.print_exc()
     except Exception as e:
         logger.error(f"Unexpected error generating crash report: {e}", exc_info=True)
         print(f"Error generating crash report: {e}\n")
-        import traceback
         traceback.print_exc()
 
 def check_logs_for_errors():
@@ -5066,8 +5077,7 @@ def check_logs_for_errors():
     ]
     try:
         with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
-            lines = f.readlines()
-        last_lines = lines[-200:] if len(lines) > 200 else lines
+            last_lines = deque(f, maxlen=200)
         for line in last_lines:
             line_lower = line.lower()
             for keyword in error_keywords:
@@ -5150,6 +5160,79 @@ def ask_user_for_interrupt_analysis():
         else:
             print("Please enter Y or N.")
 
+def _run_server_pty(command):
+    """Run Minecraft server with PTY pseudo-terminal (Unix only)."""
+    master_fd, slave_fd = pty.openpty()
+    process = subprocess.Popen(
+        command, cwd=BASE_DIR,
+        stdin=sys.stdin, stdout=slave_fd, stderr=slave_fd,
+        close_fds=True
+    )
+    os.close(slave_fd)
+    logger.info(f"Server process started with PID: {process.pid} (PTY mode)")
+    server_ready = False
+    out_buffer = b""
+    try:
+        while process.poll() is None:
+            r, _, _ = select.select([master_fd], [], [], 0.5)
+            if r:
+                data = os.read(master_fd, 4096)
+                if not data:
+                    break
+                if server_ready:
+                    os.write(sys.stdout.fileno(), data)
+                else:
+                    out_buffer += data
+                    while b"\n" in out_buffer:
+                        line, out_buffer = out_buffer.split(b"\n", 1)
+                        line += b"\n"
+                        if b"Done" in line and b"For help" in line:
+                            server_ready = True
+                        text = line.decode("utf-8", errors="replace")
+                        if "sun.misc.Unsafe" not in text and "MemUtilUnsafe" not in text:
+                            os.write(sys.stdout.fileno(), line)
+                    if server_ready and out_buffer:
+                        os.write(sys.stdout.fileno(), out_buffer)
+                        out_buffer = b""
+        while True:
+            r, _, _ = select.select([master_fd], [], [], 0.5)
+            if not r:
+                break
+            data = os.read(master_fd, 4096)
+            if not data:
+                break
+            if server_ready:
+                os.write(sys.stdout.fileno(), data)
+            else:
+                out_buffer += data
+                while b"\n" in out_buffer:
+                    line, out_buffer = out_buffer.split(b"\n", 1)
+                    line += b"\n"
+                    if b"sun.misc.Unsafe" not in line and b"MemUtilUnsafe" not in line:
+                        os.write(sys.stdout.fileno(), line)
+                if out_buffer:
+                    os.write(sys.stdout.fileno(), out_buffer)
+    finally:
+        os.close(master_fd)
+    process.wait()
+    return process
+
+
+def _run_server_pipe(command):
+    """Run Minecraft server with pipe I/O (Windows fallback)."""
+    process = subprocess.Popen(
+        command, cwd=BASE_DIR,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, bufsize=1, universal_newlines=True
+    )
+    logger.info(f"Server process started with PID: {process.pid} (pipe mode)")
+    for line in process.stdout:
+        if "sun.misc.Unsafe" not in line and "MemUtilUnsafe" not in line and "Advanced terminal features" not in line:
+            print(line, end="")
+    process.wait()
+    return process
+
+
 def start_server():
     global SERVER_START_TIME, SERVER_END_TIME
     logger.info("Starting server startup process")
@@ -5206,7 +5289,6 @@ def start_server():
     command = [
         java_path,
         f"-Xmx{max_ram_mb}M",
-        "--add-modules=jdk.incubator.vector",
         "-jar", str(SERVER_JAR),
         "--commands-settings", str(BASE_DIR / "config" / "commands.yml"),
         "--spigot-settings", str(BASE_DIR / "config" / "spigot.yml"),
@@ -5233,19 +5315,10 @@ def start_server():
     process = None
     try:
         logger.info("Starting server process")
-        process = subprocess.Popen(
-            command,
-            cwd=BASE_DIR,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            universal_newlines=True
-        )
-        logger.info(f"Server process started with PID: {process.pid}")
-        for line in process.stdout:
-            print(line, end="")
-        process.wait()
+        if platform.system() != "Windows" and termios is not None:
+            process = _run_server_pty(command)
+        else:
+            process = _run_server_pipe(command)
         SERVER_END_TIME = time.time()
         uptime_seconds, uptime_str, _ = get_uptime()
         logger.info(f"Server process ended with return code: {process.returncode}, uptime: {uptime_str}")
@@ -5369,7 +5442,7 @@ def rollback_version():
         backup_list.append((backup_file, friendly_name))
         file_size = os.path.getsize(backup_file)
         logger.info(f"Backup {i}: {backup_file.name} ({format_file_size(file_size)}), friendly name: {friendly_name}")
-        print(f"{i}. {friendly_name}")
+        print(f" {i}. {friendly_name}")
     print("======================")
     logger.info(f"Displayed {len(backup_list)} available backups")
     try:
@@ -5409,7 +5482,7 @@ def rollback_version():
             logger.error(f"Bad ZIP file error: {e}", exc_info=True)
             print("Error: The backup file appears to be corrupted or not a valid ZIP archive\n")
             if temp_dir.exists():
-                shutil.rmtree(temp_dir, ignore_errors=True)
+                safe_rmtree(temp_dir)
                 logger.info("Cleaned up temporary directory after error")
             remove_lock()
             return
@@ -5417,7 +5490,7 @@ def rollback_version():
             logger.error(f"Error extracting backup file: {e}", exc_info=True)
             print(f"Error extracting backup file: {e}\n")
             if temp_dir.exists():
-                shutil.rmtree(temp_dir, ignore_errors=True)
+                safe_rmtree(temp_dir)
                 logger.info("Cleaned up temporary directory after error")
             remove_lock()
             return
@@ -5425,7 +5498,7 @@ def rollback_version():
             logger.error(f"Extraction failed or produced empty directory: {temp_dir}")
             print("Error: Failed to extract backup file or backup is empty\n")
             if temp_dir.exists():
-                shutil.rmtree(temp_dir, ignore_errors=True)
+                safe_rmtree(temp_dir)
                 logger.info("Cleaned up empty temporary directory")
             remove_lock()
             return
@@ -5472,7 +5545,7 @@ def rollback_version():
         logger.info(f"File copy completed: {copied_count} items copied")
         logger.info("Cleaning up temporary directory")
         try:
-            shutil.rmtree(temp_dir, ignore_errors=True)
+            safe_rmtree(temp_dir)
             logger.info(f"Successfully removed temporary directory: {temp_dir}")
         except Exception as cleanup_error:
             logger.error(f"Failed to remove temporary directory {temp_dir}: {cleanup_error}")
@@ -5495,28 +5568,23 @@ def rollback_version():
         temp_dir = BASE_DIR / "temp_rollback"
         if temp_dir.exists():
             try:
-                shutil.rmtree(temp_dir, ignore_errors=True)
+                safe_rmtree(temp_dir)
                 logger.info("Cleaned up temporary directory after user interrupt")
             except Exception as e:
                 logger.error(f"Failed to clean up temporary directory after interrupt: {e}")
     except Exception as e:
         logger.error(f"Error during rollback: {e}", exc_info=True)
         print(f"Error during rollback: {e}")
-        import traceback
         traceback.print_exc()
         temp_dir = BASE_DIR / "temp_rollback"
         if temp_dir.exists():
             try:
-                shutil.rmtree(temp_dir, ignore_errors=True)
+                safe_rmtree(temp_dir)
                 logger.info("Cleaned up temporary directory after error")
             except Exception as cleanup_error:
                 logger.error(f"Failed to clean up temporary directory after error: {cleanup_error}")
     finally:
-        logger.info("Removing task lock for rollback operation")
-        if remove_lock():
-            logger.info("Task lock removed successfully")
-        else:
-            logger.error("Failed to remove task lock for rollback operation")
+        _unlock_with_logging("rollback")
 
 def disable_all_plugins():
     if not PLUGINS_DIR.exists():
@@ -5666,7 +5734,7 @@ def upgrade_server(target_version=None, force=False):
                         status = "↑ NEWER"
                     else:
                         status = "= CURRENT"
-                print(f"{i}. {ver} {status}")
+                print(f" {i}. {ver} {status}")
                 logger.info(f"Displayed version {ver}: {status}")
             print("=" * 30)
             try:
@@ -5825,11 +5893,7 @@ def upgrade_server(target_version=None, force=False):
         logger.error(f"Error during upgrade process: {e}", exc_info=True)
         print(f"Error during upgrade process: {e}\n")
     finally:
-        logger.info("Removing task lock for upgrade operation")
-        if remove_lock():
-            logger.info("Task lock removed successfully")
-        else:
-            logger.error("Failed to remove task lock for upgrade operation")
+        _unlock_with_logging("upgrade")
 
 def compare_versions(version1, version2):
     try:
