@@ -5176,7 +5176,12 @@ def _run_server_pty(command):
         while process.poll() is None:
             r, _, _ = select.select([master_fd], [], [], 0.5)
             if r:
-                data = os.read(master_fd, 4096)
+                try:
+                    data = os.read(master_fd, 4096)
+                except OSError as e:
+                    if e.errno == 5:  # EIO — slave closed
+                        break
+                    raise
                 if not data:
                     break
                 if server_ready:
@@ -5198,7 +5203,12 @@ def _run_server_pty(command):
             r, _, _ = select.select([master_fd], [], [], 0.5)
             if not r:
                 break
-            data = os.read(master_fd, 4096)
+            try:
+                data = os.read(master_fd, 4096)
+            except OSError as e:
+                if e.errno == 5:  # EIO — slave closed
+                    break
+                raise
             if not data:
                 break
             if server_ready:
