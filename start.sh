@@ -1488,7 +1488,10 @@ def install_modules_from_info(update_info, names, interactive=True):
     for name in names:
         resolve(name)
     if not to_install:
-        print("Nothing to install.\n")
+        if names:
+            print("All selected modules are already installed.\n")
+        else:
+            print("Nothing to install.\n")
         return False
     ok = False
     for name in to_install:
@@ -1507,6 +1510,7 @@ def install_modules_from_info(update_info, names, interactive=True):
             ok = True
     if registry != installed:
         write_modules_json(registry)
+    print("")
     return ok
 
 def select_modules_interactive(modules):
@@ -1804,7 +1808,7 @@ def main():
     is_core_only = bool(args) and args[0] in core_only_commands
     if args and args[0] == "--install":
         try:
-            run_install_flow(args[1:])
+            run_install_flow(args[1:], first_run=not is_modules_environment_installed())
         except KeyboardInterrupt:
             logger.warning("Script interrupted by user (KeyboardInterrupt)")
             print("\n\nScript interrupted by user\n")
