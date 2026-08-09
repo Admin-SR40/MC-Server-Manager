@@ -1336,19 +1336,24 @@ def choose_modules_dir():
     print(" 1. ~/.cache/MC-Server-Manager (shared across servers)")
     print(" 2. ./bundles/modules (this server only)")
     print(" 3. Custom path")
-    while True:
-        choice = input("\nYour choice (1-3): ").strip()
-        if choice == "1":
-            return Path.home() / ".cache" / "MC-Server-Manager"
-        elif choice == "2":
-            return BASE_DIR / "bundles" / "modules"
-        elif choice == "3":
-            custom = input("Enter custom path: ").strip()
-            if custom:
-                return Path(custom).expanduser().resolve()
-            print("Path cannot be empty.")
-        else:
-            print("Invalid choice. Please enter 1, 2, or 3.")
+    try:
+        while True:
+            choice = input("\nYour choice (1-3): ").strip()
+            if choice == "1":
+                return Path.home() / ".cache" / "MC-Server-Manager"
+            elif choice == "2":
+                return BASE_DIR / "bundles" / "modules"
+            elif choice == "3":
+                custom = input("Enter custom path: ").strip()
+                if custom:
+                    return Path(custom).expanduser().resolve()
+                print("Path cannot be empty.")
+            else:
+                print("Invalid choice. Please enter 1, 2, or 3.")
+    except KeyboardInterrupt:
+        logger.warning("Module directory selection interrupted by user")
+        print("\nInstallation canceled.\n")
+        return None
 
 def is_modules_environment_installed():
     if not MODULES_DIR or not MODULES_DIR.exists():
@@ -1511,7 +1516,7 @@ def select_modules_interactive(modules):
     for i, name in enumerate(names, 1):
         info = modules[name]
         requires = f" (requires: {', '.join(info.get('requires', []))})" if info.get("requires") else ""
-        print(f" {i:2d}. {name:<12} - {info.get('description', '')}{requires}")
+        print(f"{i:2d}. {name:<12} - {info.get('description', '')}{requires}")
     print("=" * 52)
     print("Enter numbers (e.g. '1 2 3'), 'all' for everything, or Enter to cancel.")
     choice = input("\nYour selection: ").strip().lower()
@@ -1531,54 +1536,76 @@ def select_modules_interactive(modules):
 def run_install_flow(args=None, first_run=False):
     args = args or []
     global MODULES_DIR, MODULES_JSON
-    if not MODULES_DIR:
-        path = choose_modules_dir()
-        if not path:
-            print("Installation canceled.\n")
-            return False
-        set_modules_dir(path)
-        MODULES_DIR = path
-        MODULES_JSON = path / "modules.json"
     try:
-        MODULES_DIR.mkdir(parents=True, exist_ok=True)
-    except OSError as e:
-        logger.error(f"Could not create modules directory {MODULES_DIR}: {e}")
-        print(f"\nError: Could not create modules directory {MODULES_DIR}")
-        print(f"{e}\n")
-        return False
-    try:
-        update_info = get_update_info()
-    except Exception as e:
-        logger.error(f"Could not fetch module list: {e}")
-        print(f"\nError: Could not fetch module list: {e}")
-        print("Please check your internet connection and try again.\n")
-        return False
-    modules = update_info.get("modules", {})
-    if not modules:
-        print("No modules are available in update.json.\n")
-        return False
-    if first_run:
-        print("\nFirst run detected - please choose which modules to install.")
-    if args:
-        targets = []
-        for arg in args:
-            if arg.lower() == "all":
-                targets = list(modules.keys())
-                break
-            targets.append(arg)
-        unknown = [target for target in targets if target not in modules]
-        if unknown:
-            print(f"Unknown module(s): {', '.join(unknown)}")
-            print(f"Available modules: {', '.join(sorted(modules))}\n")
-        targets = [target for target in targets if target in modules]
-        if not targets:
+        if first_run:
+            print()
+            print("=" * 60)
+            print("               FIRST RUN - MODULE SETUP")
+            print("=" * 60)
+            print()
+            print("This is the first time the script has been used in this directory.")
+            print("No modules are installed yet, so most commands cannot be used.")
+            print()
+            print("The core script only supports:")
+            print(" - starting the server")
+            print(" - --info / --license / --help / --version")
+            print(" - installing modules (this flow)")
+            print()
+            print("After installing modules you get: server initialization, version")
+            print("control, backups, plugins, worlds, crash analysis, players,")
+            print("settings and maintenance.")
+            print()
+            print("Modules are downloaded from GitHub and verified with MD5 checks.")
+            print("You can also run './start.sh --install all' later to install everything.")
+        if not MODULES_DIR:
+            path = choose_modules_dir()
+            if not path:
+                return False
+            set_modules_dir(path)
+            MODULES_DIR = path
+            MODULES_JSON = path / "modules.json"
+        try:
+            MODULES_DIR.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            logger.error(f"Could not create modules directory {MODULES_DIR}: {e}")
+            print(f"\nError: Could not create modules directory {MODULES_DIR}")
+            print(f"{e}\n")
             return False
-        return install_modules_from_info(update_info, targets)
-    selected = select_modules_interactive(modules)
-    if not selected:
-        print("No modules selected. Installation canceled.\n")
+        try:
+            update_info = get_update_info()
+        except Exception as e:
+            logger.error(f"Could not fetch module list: {e}")
+            print(f"\nError: Could not fetch module list: {e}")
+            print("Please check your internet connection and try again.\n")
+            return False
+        modules = update_info.get("modules", {})
+        if not modules:
+            print("No modules are available in update.json.\n")
+            return False
+        if args:
+            targets = []
+            for arg in args:
+                if arg.lower() == "all":
+                    targets = list(modules.keys())
+                    break
+                targets.append(arg)
+            unknown = [target for target in targets if target not in modules]
+            if unknown:
+                print(f"Unknown module(s): {', '.join(unknown)}")
+                print(f"Available modules: {', '.join(sorted(modules))}\n")
+            targets = [target for target in targets if target in modules]
+            if not targets:
+                return False
+            return install_modules_from_info(update_info, targets)
+        selected = select_modules_interactive(modules)
+        if not selected:
+            print("No modules selected. Installation canceled.\n")
+            return False
+        return install_modules_from_info(update_info, selected)
+    except KeyboardInterrupt:
+        logger.warning("Module installation interrupted by user (KeyboardInterrupt)")
+        print("\nInstallation canceled.\n")
         return False
-    return install_modules_from_info(update_info, selected)
 
 def update_installed_modules(update_info, force=False):
     print("\nChecking installed modules...")
@@ -1776,16 +1803,21 @@ def main():
     core_only_commands = ("--help", "--license", "--install", "--version")
     is_core_only = bool(args) and args[0] in core_only_commands
     if args and args[0] == "--install":
-        run_install_flow(args[1:])
+        try:
+            run_install_flow(args[1:])
+        except KeyboardInterrupt:
+            logger.warning("Script interrupted by user (KeyboardInterrupt)")
+            print("\n\nScript interrupted by user\n")
         return
     if not is_core_only and not is_modules_environment_installed():
         logger.info("No modules installed, entering first-run install flow")
-        print("\n" + "=" * 60)
-        print("            FIRST RUN - MODULE SETUP")
-        print("=" * 60)
-        run_install_flow(first_run=True)
+        try:
+            run_install_flow(first_run=True)
+        except KeyboardInterrupt:
+            logger.warning("Script interrupted by user (KeyboardInterrupt)")
+            print("\n\nScript interrupted by user\n")
         if not is_modules_environment_installed():
-            print("\nNo modules installed. Run '--install' to set up modules.\n")
+            print("No modules installed. Run '--install' to set up modules.\n")
             return
     try:
         logger.info("Checking environment...")
