@@ -19,15 +19,18 @@ BASE_DIR = None
 SERVER_PROPERTIES = None
 logger = None
 
+
 def bind(ctx):
     global BASE_DIR, SERVER_PROPERTIES, logger
     BASE_DIR = ctx.BASE_DIR
     SERVER_PROPERTIES = ctx.SERVER_PROPERTIES
     logger = ctx.logger
 
+
 def dispatch(args, ctx):
     if args and args[0] == "--settings":
         edit_server_settings()
+
 
 def edit_server_settings():
     if not SERVER_PROPERTIES.exists():

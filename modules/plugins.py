@@ -24,10 +24,12 @@ MODULE = {
 PLUGINS_DIR = None
 logger = None
 
+
 def bind(ctx):
     global PLUGINS_DIR, logger
     PLUGINS_DIR = ctx.PLUGINS_DIR
     logger = ctx.logger
+
 
 def dispatch(args, ctx):
     if not args or args[0] != "--plugins":
@@ -41,10 +43,12 @@ def dispatch(args, ctx):
     else:
         manage_plugins_with_dependencies()
 
+
 def truncate_text(text, max_length):
     if len(text) > max_length:
         return text[:max_length-3] + "..."
     return text
+
 
 def format_plugins_table(plugins):
     name_width = 25
@@ -68,6 +72,7 @@ def format_plugins_table(plugins):
         table.append(row)
     table.append("╚" + "═" * name_width + "╩" + "═" * version_width + "╩" + "═" * status_width + "╝")
     return "\n".join(table)
+
 
 def get_plugin_info(plugin_path):
     try:
@@ -98,6 +103,7 @@ def get_plugin_info(plugin_path):
             name = name[:-9]
         return name, 'Unknown', 'Unknown'
 
+
 def get_plugin_dependencies(plugin_path):
     try:
         with zipfile.ZipFile(plugin_path, 'r') as jar:
@@ -125,6 +131,7 @@ def get_plugin_dependencies(plugin_path):
     except Exception as e:
         return {'depend': [], 'softdepend': []}
 
+
 def check_plugin_dependencies(plugins, plugin_to_disable):
     plugin_name = plugin_to_disable['name']
     hard_dependents = []
@@ -141,6 +148,7 @@ def check_plugin_dependencies(plugins, plugin_to_disable):
         'soft_dependents': soft_dependents
     }
 
+
 def format_dependency_warning(plugin, hard_dependents, soft_dependents):
     message = []
     if hard_dependents:
@@ -155,6 +163,7 @@ def format_dependency_warning(plugin, hard_dependents, soft_dependents):
             message.append(f" - {dependent['name']} (version {dependent['version']})")
         message.append("\nThese plugins may lose functionality or not work perfectly!")
     return "\n".join(message)
+
 
 def manage_plugins_with_dependencies():
     logger.info("Starting plugin management with dependency analysis")
@@ -351,7 +360,9 @@ def manage_plugins_with_dependencies():
         logger.error(f"Error toggling plugins: {e}")
         print(f"Error toggling plugins: {e}\n")
 
+
 def disable_dependency_chain(plugins, target_plugin):
+    logger.info(f"Starting dependency chain disable for {target_plugin['name']}")
     disabled_plugins = []
     plugins_to_disable = [target_plugin]
     while plugins_to_disable:
@@ -365,8 +376,10 @@ def disable_dependency_chain(plugins, target_plugin):
             current_plugin['path'] = new_path
             current_plugin['enabled'] = False
             disabled_plugins.append(current_plugin)
+            logger.info(f"Disabled: {current_plugin['name']}")
             print(f"  Disabled: {current_plugin['name']}")
         except Exception as e:
+            logger.error(f"Error disabling {current_plugin['name']}: {e}")
             print(f"  Error disabling {current_plugin['name']}: {e}")
             continue
         for plugin in plugins:
@@ -374,8 +387,11 @@ def disable_dependency_chain(plugins, target_plugin):
                 dependencies = get_plugin_dependencies(plugin['path'])
                 if current_plugin['name'] in dependencies['depend']:
                     plugins_to_disable.append(plugin)
+                    logger.info(f"Queued for disabling (hard dependency): {plugin['name']}")
                     print(f"  Queued for disabling (hard dependency): {plugin['name']}")
+    logger.info(f"Dependency chain disable finished: {len(disabled_plugins)} plugin(s) disabled")
     return disabled_plugins
+
 
 def analyze_plugin_dependencies_cli():
     logger.info("Starting analyze_plugin_dependencies_cli function")
@@ -506,15 +522,20 @@ def analyze_plugin_dependencies_cli():
     print("")
     logger.info("Plugin dependency analysis completed")
 
+
 def is_plugin_enabled(plugin_name, enabled_plugins):
     return any(plugin['name'].lower() == plugin_name.lower() for plugin in enabled_plugins)
 
+
 def disable_all_plugins():
+    logger.info("Starting disable of all plugins")
     if not PLUGINS_DIR.exists():
+        logger.warning("Plugins directory not found")
         print("Plugins directory not found.")
         return False
     plugin_files = list(PLUGINS_DIR.glob("*.jar"))
     if not plugin_files:
+        logger.info("No plugins found to disable")
         print("No plugins found to disable.")
         return True
     disabled_count = 0
@@ -525,7 +546,9 @@ def disable_all_plugins():
                 plugin_path.rename(new_path)
                 disabled_count += 1
             except Exception as e:
+                logger.error(f"Error disabling {plugin_path.name}: {e}")
                 print(f"Error disabling {plugin_path.name}: {e}")
                 return False
+    logger.info(f"Disabled {disabled_count} plugins")
     print(f"Successfully disabled {disabled_count} plugins.")
     return True

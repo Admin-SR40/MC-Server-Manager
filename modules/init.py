@@ -38,6 +38,7 @@ get_device_id = None
 show_info = None
 compare_versions = None
 
+
 def bind(ctx):
     global BASE_DIR, CONFIG_FILE, SERVER_JAR, SERVER_PROPERTIES, logger
     global create_lock, remove_lock, get_device_id, show_info, compare_versions
@@ -52,6 +53,7 @@ def bind(ctx):
     show_info = ctx.show_info
     compare_versions = ctx.compare_versions
 
+
 def dispatch(args, ctx):
     if not args:
         return
@@ -63,11 +65,13 @@ def dispatch(args, ctx):
         else:
             init_config()
 
+
 def truncate_text(text, max_length):
     text = str(text)
     if len(text) > max_length:
         return text[:max_length - 3] + "..."
     return text
+
 
 def format_java_table(java_installations):
     path_width = 34
@@ -95,6 +99,7 @@ def format_java_table(java_installations):
     table.append("╚" + "═" * path_width + "╩" + "═" * version_width + "╩" + "═" * vendor_width + "╝")
     return "\n".join(table)
 
+
 def get_total_memory():
     try:
         if is_running_in_container():
@@ -105,6 +110,7 @@ def get_total_memory():
                 return container_mem
         if platform.system() == "Windows":
             import ctypes
+
             class MEMORYSTATUSEX(ctypes.Structure):
                 _fields_ = [
                     ("dwLength", ctypes.c_ulong),
@@ -137,22 +143,30 @@ def get_total_memory():
             except (OSError, ValueError):
                 return 4 * 1024 * 1024 * 1024
     except Exception as e:
+        logger.warning(f"Could not determine total memory: {e}")
         print(f" - Warning: Could not determine total memory: {e}")
         return 4 * 1024 * 1024 * 1024
 
+
 def is_running_in_container():
     if os.path.exists('/.dockerenv'):
+        logger.info("Container detected (/.dockerenv)")
         return True
     try:
         if os.path.exists('/proc/1/cgroup'):
             with open('/proc/1/cgroup', 'r') as f:
                 content = f.read()
                 if 'docker' in content or 'kubepods' in content:
+                    logger.info("Container detected (/proc/1/cgroup)")
                     return True
-    except:
-        pass
+    except Exception as e:
+        logger.debug(f"Could not read /proc/1/cgroup: {e}")
     container_env_vars = ['KUBERNETES_SERVICE_HOST', 'CONTAINER_ID', 'DOCKER_CONTAINER']
-    return any(var in os.environ for var in container_env_vars)
+    detected = any(var in os.environ for var in container_env_vars)
+    if detected:
+        logger.info("Container detected (environment variables)")
+    return detected
+
 
 def get_container_memory_limit():
     cgroup_v2_path = "/sys/fs/cgroup/memory.max"
@@ -164,8 +178,8 @@ def get_container_memory_limit():
                     limit = int(limit)
                     if limit > 0 and limit < 2**63:
                         return limit
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Could not read cgroup v2 memory limit: {e}")
     cgroup_v1_path = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
     if os.path.exists(cgroup_v1_path):
         try:
@@ -173,8 +187,8 @@ def get_container_memory_limit():
                 limit = int(f.read().strip())
                 if limit > 0 and limit < 2**63:
                     return limit
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Could not read cgroup v1 memory limit: {e}")
     env_vars = ['DOCKER_MEMORY_LIMIT', 'CONTAINER_MEMORY_LIMIT', 'MEMORY_LIMIT']
     for env_var in env_vars:
         if env_var in os.environ:
@@ -186,9 +200,11 @@ def get_container_memory_limit():
                     return int(limit_str[:-1]) * 1024 * 1024
                 else:
                     return int(limit_str) * 1024 * 1024
-            except:
+            except Exception as e:
+                logger.debug(f"Could not parse container memory env var {env_var}: {e}")
                 continue
     return None
+
 
 def calculate_plugins_memory(enabled_plugins):
     total_plugin_memory = 0
@@ -218,6 +234,7 @@ def calculate_plugins_memory(enabled_plugins):
             total_plugin_memory += 30
     return total_plugin_memory
 
+
 def calculate_players_memory(max_players, view_distance):
     visible_chunks = view_distance * view_distance
     chunks_per_player_mb = visible_chunks * 0.25
@@ -240,6 +257,7 @@ def calculate_players_memory(max_players, view_distance):
     }
     return players_memory, details
 
+
 def validate_memory_allocation(total_mem_mb, allocated_mb, is_container=False):
     if is_container:
         max_allowed = total_mem_mb * 0.85
@@ -255,6 +273,7 @@ def validate_memory_allocation(total_mem_mb, allocated_mb, is_container=False):
             print(f"Adjusted to limit: {max_allowed}MB")
             return max_allowed
     return allocated_mb
+
 
 def validate_java_path(java_path):
     path = Path(java_path)
@@ -310,12 +329,15 @@ def validate_java_path(java_path):
                 return validate_java_path(java_exe)
     return None
 
+
 def detect_server_cores():
     if SERVER_JAR.exists():
+        logger.info("core.jar already exists, skipping core detection")
         print("core.jar already exists. Skipping core detection.")
         return True
     jar_files = list(BASE_DIR.glob("*.jar"))
     if not jar_files:
+        logger.info("No JAR files found in current directory")
         print("No JAR files found in current directory.")
         return False
     valid_cores = []
@@ -331,23 +353,31 @@ def detect_server_cores():
                             'name': jar_file.name,
                             'version': version_id
                         })
+                        logger.info(f"Found valid server core: {jar_file.name} (Version: {version_id})")
                         print(f"Found valid server core: {jar_file.name} (Version: {version_id})")
         except (zipfile.BadZipFile, KeyError, json.JSONDecodeError) as e:
+            logger.warning(f"Skipping {jar_file.name}: Not a valid server core ({e})")
             print(f"Skipping {jar_file.name}: Not a valid server core ({e})")
             continue
         except Exception as e:
+            logger.error(f"Error checking {jar_file.name}: {e}")
             print(f"Error checking {jar_file.name}: {e}")
             continue
     if not valid_cores:
+        logger.warning("No valid server cores found in JAR files")
         print("No valid server cores found in JAR files.")
         return False
     if len(valid_cores) == 1:
         core = valid_cores[0]
+        logger.info(f"Using the only valid server core: {core['name']}")
         print(f"Using the only valid server core: {core['name']}")
         shutil.copy2(core['path'], SERVER_JAR)
+        logger.info(f"Copied {core['name']} to core.jar")
         print(f"Copied {core['name']} to core.jar")
         return True
+    logger.info(f"Found multiple valid server cores: {', '.join(core['name'] for core in valid_cores)}")
     return valid_cores
+
 
 def select_server_core(cores, auto_mode=False):
     if auto_mode:
@@ -358,7 +388,8 @@ def select_server_core(cores, auto_mode=False):
                 if compare_versions(core['version'], highest_version) > 0:
                     highest_core = core
                     highest_version = core['version']
-            except:
+            except Exception as e:
+                logger.warning(f"Could not compare version '{core['version']}': {e}")
                 if not highest_core:
                     highest_core = core
         if highest_core:
@@ -384,7 +415,8 @@ def select_server_core(cores, auto_mode=False):
                             if compare_versions(core['version'], highest_version) > 0:
                                 highest_core = core
                                 highest_version = core['version']
-                        except:
+                        except Exception as e:
+                            logger.warning(f"Could not compare version '{core['version']}': {e}")
                             if not highest_core:
                                 highest_core = core
                     if highest_core:
@@ -409,6 +441,7 @@ def select_server_core(cores, auto_mode=False):
             except Exception as e:
                 print(f"Error selecting server core: {e}")
                 return False
+
 
 def init_config(prefill_version=None):
     logger.info("Starting manual server initialization")
@@ -594,6 +627,7 @@ def init_config(prefill_version=None):
     except Exception as e:
         logger.error(f"Failed to save configuration: {e}")
         print(f"Error saving configuration: {e}\n")
+
 
 def init_config_auto(prefill_version=None):
     logger.info("Starting automatic server initialization")
@@ -793,6 +827,7 @@ def init_config_auto(prefill_version=None):
     logger.info(f"Auto initialization completed in {elapsed_time:.2f}s")
     print(f"Auto initialization completed in {elapsed_time:.2f}s!\n")
 
+
 def find_java_installations():
     java_installations = []
     search_paths = [
@@ -834,7 +869,8 @@ def find_java_installations():
                             'version': version,
                             'vendor': vendor
                         })
-                except:
+                except Exception as e:
+                    logger.debug(f"Java version probe failed for {real_path}: {e}")
                     continue
     try:
         if platform.system() == "Windows":
@@ -876,10 +912,11 @@ def find_java_installations():
                                 'version': version,
                                 'vendor': vendor
                             })
-                    except:
+                    except Exception as e:
+                        logger.debug(f"Java version probe failed for PATH entry {path}: {e}")
                         continue
-    except:
-        pass
+    except Exception as e:
+        logger.warning(f"Could not search PATH for Java: {e}")
     java_home = os.environ.get('JAVA_HOME')
     if java_home:
         java_path = os.path.join(java_home, 'bin', 'java')
@@ -904,14 +941,15 @@ def find_java_installations():
                             'version': version,
                             'vendor': vendor
                         })
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Java version probe failed for JAVA_HOME {java_path}: {e}")
     unique_installations = []
     seen_paths = set()
     for install in java_installations:
         if install['path'] not in seen_paths:
             seen_paths.add(install['path'])
             unique_installations.append(install)
+
     def version_key(install):
         version = install['version']
         try:
@@ -919,7 +957,9 @@ def find_java_installations():
         except (ValueError, TypeError):
             return -1
     unique_installations.sort(key=version_key, reverse=True)
+    logger.info(f"Found {len(unique_installations)} Java installation(s)")
     return unique_installations
+
 
 def parse_java_version(output):
     lines = output.strip().split('\n')
@@ -961,6 +1001,7 @@ def parse_java_version(output):
 
 _config_cache = {}
 _config_mtime = 0
+
 
 def standardize_server_structure():
     if not create_lock(["--standardize"]):

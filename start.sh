@@ -109,12 +109,14 @@ BASE_EXCLUDE_LIST = [
 
 # ── Utility functions ──────────────────────────────────────────────
 
+
 def print_banner(title, width=50):
     """Print a centered banner with '=' separators."""
     print()
     print("=" * width)
     print(title.center(width))
     print("=" * width)
+
 
 def confirm_action(prompt, default_no=True):
     """Ask a Y/N question, return True if user confirms."""
@@ -127,6 +129,7 @@ def confirm_action(prompt, default_no=True):
             return False
         print("Please enter Y or N.")
 
+
 def log_and_print(msg, level="info"):
     """Log a message and print it to console."""
     if level == "error":
@@ -137,11 +140,13 @@ def log_and_print(msg, level="info"):
         logger.info(msg)
     print(msg)
 
+
 def safe_rmtree(path):
     """Safely remove a directory tree, ignoring errors."""
     p = Path(path) if not isinstance(path, Path) else path
     if p.exists():
         shutil.rmtree(p, ignore_errors=True)
+
 
 def _unlock_with_logging(op_name):
     """Remove task lock with standard logging."""
@@ -152,6 +157,8 @@ def _unlock_with_logging(op_name):
         logger.error(f"Failed to remove task lock for {op_name} operation")
 
 # ───────────────────────────────────────────────────────────────────
+
+
 def setup_logger():
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     logger = logging.getLogger("mc-manager")
@@ -168,6 +175,7 @@ def setup_logger():
     logger.addHandler(file_handler)
     if LOG_FILE.exists() and LOG_FILE.stat().st_size > 128 * 1024:
         try:
+            original_size = LOG_FILE.stat().st_size
             file_handler.close()
             logger.removeHandler(file_handler)
             timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S")
@@ -182,7 +190,7 @@ def setup_logger():
             new_handler.setLevel(logging.INFO)
             new_handler.setFormatter(formatter)
             logger.addHandler(new_handler)
-            logger.info(f"Log file rotated: {archive_filename} (original size: {LOG_FILE.stat().st_size} bytes)")
+            logger.info(f"Log file rotated: {archive_filename} (original size: {original_size} bytes)")
         except Exception as e:
             try:
                 logger.addHandler(file_handler)
@@ -190,6 +198,7 @@ def setup_logger():
                 pass
             logger.warning(f"Warning: Failed to rotate log file: {e}")
     return logger
+
 
 def format_uptime_duration(seconds):
     if seconds < 0:
@@ -209,6 +218,7 @@ def format_uptime_duration(seconds):
         parts.append(f"{seconds}s")
     return " ".join(parts)
 
+
 def get_uptime():
     global SERVER_START_TIME, SERVER_END_TIME
     if not SERVER_START_TIME:
@@ -218,6 +228,7 @@ def get_uptime():
     uptime_str = format_uptime_duration(uptime_seconds)
     crash_time_str = time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(end_time))
     return uptime_seconds, uptime_str, crash_time_str
+
 
 def get_device_id():
     try:
@@ -276,6 +287,7 @@ def get_device_id():
         print(f"Warning: Could not generate stable device ID: {e}")
         print(" - Using 'unknown' as device identifier")
         return "unknown"
+
 
 def check_environment_change():
     read_only_commands = ["--help", "--license", "--info", "--list"]
@@ -367,6 +379,7 @@ def check_environment_change():
         print("Continuing with normal operation...")
         return True
 
+
 def handle_environment_change(init_type):
     try:
         logger.info(f"Handling environment change with init type: {init_type}")
@@ -398,6 +411,7 @@ def handle_environment_change(init_type):
         print("Falling back to normal operation...")
         return True
 
+
 def update_device_id_and_continue():
     try:
         if CONFIG_FILE.exists():
@@ -417,6 +431,7 @@ def update_device_id_and_continue():
         print("Continuing with normal operation...")
         return True
 
+
 def is_process_running(pid):
     try:
         if platform.system() == "Windows":
@@ -433,6 +448,7 @@ def is_process_running(pid):
             return True
     except (OSError, subprocess.TimeoutExpired, subprocess.SubprocessError):
         return False
+
 
 def create_lock(command):
     global _lock_depth
@@ -455,6 +471,7 @@ def create_lock(command):
         print(f"\nError creating lock file: {e}\n")
         return False
 
+
 def remove_lock():
     global _lock_depth
     if _lock_depth > 0:
@@ -473,6 +490,7 @@ def remove_lock():
         logger.error(f"Error removing lock file: {e}")
         print(f"\nError removing lock file: {e}\n")
         return False
+
 
 def check_lock():
     if not LOCK_FILE.exists():
@@ -529,6 +547,7 @@ def check_lock():
         print(f"\nError reading lock file: {e}\n")
         return None
 
+
 def format_time_duration(start_time):
     now = datetime.datetime.now()
     duration = now - start_time
@@ -545,6 +564,7 @@ def format_time_duration(start_time):
         return f"{minutes}m {seconds}s"
     else:
         return f"{seconds}s"
+
 
 def handle_pending_task():
     logger.info("Checking for pending tasks...")
@@ -627,12 +647,15 @@ def handle_pending_task():
                 logger.warning(f"Invalid choice in pending task menu: {choice}")
                 print("Please enter Y, N, or Q.\n")
 
+
 def check_server_requirements():
+    logger.info("Checking server requirements")
     print("Checking server requirements...")
     port_available = check_port_availability()
     java_valid = check_java_installation()
     permissions_ok = check_file_permissions()
     return port_available, java_valid, permissions_ok
+
 
 def check_port_availability():
     port = 25565
@@ -660,6 +683,7 @@ def check_port_availability():
     except Exception as e:
         print(f" - Error checking port {port}: {e}")
         return False
+
 
 def check_java_installation():
     try:
@@ -689,6 +713,7 @@ def check_java_installation():
         print(f" - Error checking Java installation: {e}")
         return False
 
+
 def check_file_permissions():
     required_dirs = [
         BASE_DIR / "logs",
@@ -705,16 +730,21 @@ def check_file_permissions():
                     f.write("test")
                 test_file.unlink()
             except Exception as e:
+                logger.warning(f"No write permission in {dir_path.name} directory: {e}")
                 print(f" - No write permission in {dir_path.name} directory")
                 return False
         except Exception as e:
+            logger.warning(f"Error accessing {dir_path.name} directory: {e}")
             print(f" - Error accessing {dir_path.name} directory: {e}")
             return False
     if not SERVER_JAR.exists():
+        logger.warning(f"Server core file not found: {SERVER_JAR}")
         print(f" - Server core file not found: {SERVER_JAR}")
         return False
+    logger.info("File permissions are valid")
     print(" - File permissions are valid")
     return True
+
 
 def check_and_accept_eula():
     if not EULA_FILE.exists():
@@ -722,6 +752,7 @@ def check_and_accept_eula():
             f.write("#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://aka.ms/MinecraftEULA).\n")
             f.write(f"#{datetime.datetime.now().strftime('%a %b %d %H:%M:%S %Z %Y')}\n")
             f.write("eula=true\n")
+        logger.info("EULA file created and accepted automatically")
         print("EULA file not found. Created and accepted EULA automatically.")
         print("By using this server, you agree to Mojang's EULA (https://aka.ms/MinecraftEULA)\n")
         return True
@@ -734,6 +765,7 @@ def check_and_accept_eula():
                         eula_accepted = True
                     break
     except Exception as e:
+        logger.error(f"Error reading EULA file: {e}")
         print(f"\nError reading EULA file: {e}\n")
         return False
     if not eula_accepted:
@@ -745,13 +777,17 @@ def check_and_accept_eula():
                 content += "\neula=true\n"
             with open(EULA_FILE, 'w') as f:
                 f.write(content)
+            logger.info("EULA accepted automatically (was set to false)")
             print("EULA not accepted. Automatically accepted EULA.")
             print("By using this server, you agree to Mojang's EULA (https://aka.ms/MinecraftEULA)\n")
             return True
         except Exception as e:
+            logger.error(f"Error updating EULA file: {e}")
             print(f"Error updating EULA file: {e}")
             return False
+    logger.info("EULA already accepted")
     return True
+
 
 def format_file_size(bytes_size):
     if bytes_size == 0:
@@ -763,6 +799,7 @@ def format_file_size(bytes_size):
         size /= 1024
         unit_index += 1
     return f"{size:.1f} {units[unit_index]}"
+
 
 def get_exclude_list():
     exclude_list = BASE_EXCLUDE_LIST.copy()
@@ -776,15 +813,17 @@ def get_exclude_list():
                     cleaned_item = item.strip()
                     if cleaned_item and cleaned_item not in exclude_list:
                         exclude_list.append(cleaned_item)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Could not read additional exclusions from config: {e}")
     return exclude_list
+
 
 def clear_screen():
     if platform.system() == "Windows":
         os.system("cls")
     else:
         os.system("clear")
+
 
 def load_config():
     global _config_cache, _config_mtime
@@ -805,6 +844,7 @@ def load_config():
     _config_cache = dict(config["SERVER"])
     _config_mtime = current_mtime
     return dict(_config_cache)
+
 
 def show_info():
     try:
@@ -831,6 +871,7 @@ def show_info():
     except Exception as e:
         print(f"Error loading configuration: {e}\n")
         sys.exit(1)
+
 
 def check_config_file():
     if not CONFIG_FILE.exists():
@@ -860,8 +901,9 @@ def check_config_file():
             return "critical_missing"
         return "ok"
     except (configparser.Error, KeyError, ValueError, TypeError) as e:
-        print(f"Debug: Config parsing error: {e}")
+        logger.warning(f"Config parsing error: {e}")
         return "missing_or_corrupted"
+
 
 def _run_server_pty(command):
     """Run Minecraft server with PTY pseudo-terminal (Unix only)."""
@@ -940,6 +982,7 @@ def _run_server_pipe(command):
         text=True, bufsize=1, encoding="utf-8", errors="replace"
     )
     logger.info(f"Server process started with PID: {process.pid} (pipe mode)")
+
     def forward_stdin():
         try:
             for line in sys.stdin:
@@ -1124,6 +1167,7 @@ def start_server():
                 print("\nCrash analysis module is not installed.")
                 print('Use "--install crash" to enable crash reports.\n')
 
+
 def compare_versions(version1, version2):
     try:
         v1_parts = [int(x) for x in version1.split('.')]
@@ -1140,6 +1184,7 @@ def compare_versions(version1, version2):
     except:
         return 0
 
+
 def compare_script_versions(current, latest):
     try:
         current_parts = [int(x) for x in current.split('.')]
@@ -1155,6 +1200,7 @@ def compare_script_versions(current, latest):
         return 0
     except Exception as e:
         print(f"Error comparing versions: {e}")
+
 
 def check_self_update(force=False):
     logger.info(f"Starting self update check (force mode: {force})")
@@ -1190,6 +1236,7 @@ def check_self_update(force=False):
         print("Core script is up to date.")
     update_installed_modules(update_info, force=force)
     return True
+
 
 def download_latest_version():
     logger.info("Starting download of latest version")
@@ -1294,6 +1341,7 @@ def download_latest_version():
 
 # ── Module system ─────────────────────────────────────────────────
 
+
 def get_modules_dir():
     env_dir = os.environ.get("MCSM_MODULES_DIR")
     if env_dir:
@@ -1309,6 +1357,7 @@ def get_modules_dir():
         except Exception as e:
             logger.warning(f"Could not read modules config: {e}")
     return None
+
 
 def set_modules_dir(path):
     MODULES_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -1326,12 +1375,15 @@ def set_modules_dir(path):
     logger.info(f"Modules directory configured: {path}")
     print(f"Modules directory set to: {path}")
 
+
 def resolve_modules_dir():
     global MODULES_DIR, MODULES_JSON
     MODULES_DIR = get_modules_dir()
     MODULES_JSON = MODULES_DIR / "modules.json" if MODULES_DIR else None
 
+
 def choose_modules_dir():
+    logger.info("Choosing modules directory")
     print("\nChoose where to store installed modules:")
     print(" 1. ~/.cache/MC-Server-Manager (shared across servers)")
     print(" 2. ./bundles/modules (this server only)")
@@ -1355,12 +1407,14 @@ def choose_modules_dir():
         print("\nInstallation canceled.\n")
         return None
 
+
 def is_modules_environment_installed():
     if not MODULES_DIR or not MODULES_DIR.exists():
         return False
     if MODULES_JSON.exists():
         return True
     return any(MODULES_DIR.glob("*.py"))
+
 
 def read_modules_json():
     if not MODULES_JSON or not MODULES_JSON.exists():
@@ -1372,6 +1426,7 @@ def read_modules_json():
     except Exception as e:
         logger.warning(f"Could not read modules.json: {e}")
         return {}
+
 
 def write_modules_json(registry):
     if not MODULES_DIR:
@@ -1386,12 +1441,14 @@ def write_modules_json(registry):
         print(f"Error: Could not save module registry: {e}\n")
         return False
 
+
 def get_update_info():
     url = os.environ.get("MCSM_UPDATE_URL", UPDATE_URL)
     logger.info(f"Fetching update info from: {url}")
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=15) as response:
         return json.loads(response.read().decode())
+
 
 def download_module(name, info):
     url = info.get("url")
@@ -1459,12 +1516,15 @@ def download_module(name, info):
             except Exception:
                 pass
 
+
 def install_modules_from_info(update_info, names, interactive=True):
+    logger.info(f"Installing modules: {', '.join(names)} (interactive={interactive})")
     modules = update_info.get("modules", {})
     installed = read_modules_json()
     registry = dict(installed)
     to_install = []
     skipped = set()
+
     def resolve(name):
         if name in skipped or name in to_install or name in installed:
             return True
@@ -1488,12 +1548,14 @@ def install_modules_from_info(update_info, names, interactive=True):
     for name in names:
         resolve(name)
     if not to_install:
+        logger.info("No modules to install (all requested modules already installed)")
         if names:
             print("All selected modules are already installed.\n")
         else:
             print("Nothing to install.\n")
         return False
     ok = False
+    installed_count = 0
     for name in to_install:
         info = modules[name]
         current = registry.get(name)
@@ -1502,6 +1564,7 @@ def install_modules_from_info(update_info, names, interactive=True):
             ok = True
             continue
         if download_module(name, info):
+            installed_count += 1
             registry[name] = {
                 "version": info.get("version"),
                 "md5": info.get("md5"),
@@ -1510,8 +1573,10 @@ def install_modules_from_info(update_info, names, interactive=True):
             ok = True
     if registry != installed:
         write_modules_json(registry)
+    logger.info(f"Module installation finished: {installed_count} installed, {len(to_install) - installed_count} skipped/failed")
     print("")
     return ok
+
 
 def select_modules_interactive(modules):
     names = sorted(modules.keys())
@@ -1527,6 +1592,7 @@ def select_modules_interactive(modules):
     if not choice:
         return []
     if choice == "all":
+        logger.info("User selected all modules")
         return names
     selected = []
     for part in choice.split():
@@ -1535,11 +1601,14 @@ def select_modules_interactive(modules):
         idx = int(part) - 1
         if 0 <= idx < len(names) and names[idx] not in selected:
             selected.append(names[idx])
+    logger.info(f"User selected modules: {', '.join(selected)}")
     return selected
+
 
 def run_install_flow(args=None, first_run=False):
     args = args or []
     global MODULES_DIR, MODULES_JSON
+    logger.info(f"Starting module install flow (args={args}, first_run={first_run})")
     try:
         if first_run:
             print()
@@ -1611,8 +1680,10 @@ def run_install_flow(args=None, first_run=False):
         print("\nInstallation canceled.\n")
         return False
 
+
 def update_installed_modules(update_info, force=False):
-    print("\nChecking installed modules...")
+    logger.info(f"Checking installed modules for updates (force={force})")
+    print("Checking installed modules...")
     installed = read_modules_json()
     if not installed:
         print("No modules installed. Nothing to update.\n")
@@ -1641,15 +1712,19 @@ def update_installed_modules(update_info, force=False):
         print("Module updates canceled.\n")
         return
     registry = dict(installed)
+    updated_count = 0
     for name, cloud in updates:
         if download_module(name, cloud):
+            updated_count += 1
             registry[name] = {
                 "version": cloud.get("version"),
                 "md5": cloud.get("md5"),
                 "installed_at": datetime.datetime.now().isoformat()
             }
     write_modules_json(registry)
+    logger.info(f"Module update finished: {updated_count} updated, {len(updates) - updated_count} failed")
     print("")
+
 
 def get_installed_module_names():
     names = []
@@ -1660,6 +1735,7 @@ def get_installed_module_names():
         if name not in names:
             names.append(name)
     return sorted(set(names))
+
 
 def load_module(name):
     if not MODULES_DIR:
@@ -1687,7 +1763,9 @@ def load_module(name):
         print(f"Try reinstalling it with: --install {name}\n")
         return None
 
+
 class CoreContext:
+
     def __init__(self):
         self.SCRIPT_VERSION = SCRIPT_VERSION
         self.BASE_DIR = BASE_DIR
@@ -1720,6 +1798,7 @@ class CoreContext:
         self.get_uptime = get_uptime
         self.compare_versions = compare_versions
         self.USER_AGENT = USER_AGENT
+
     def get_module(self, name):
         return load_module(name)
 
@@ -1742,6 +1821,7 @@ MODULE_COMMANDS = {
     "--cleanup": "maintenance",
     "--dump": "maintenance",
 }
+
 
 def show_help():
     print("=" * 51)
@@ -1795,6 +1875,7 @@ def show_help():
     except Exception as e:
         print('Run "--install" to view and install available modules.')
     print("")
+
 
 def main():
     global logger, ctx

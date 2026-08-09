@@ -31,6 +31,7 @@ get_uptime = None
 SCRIPT_VERSION = None
 _ctx = None
 
+
 def bind(ctx):
     global BASE_DIR, PLUGINS_DIR, SERVER_PROPERTIES, logger
     global load_config, get_device_id, get_uptime, SCRIPT_VERSION, _ctx
@@ -44,11 +45,14 @@ def bind(ctx):
     SCRIPT_VERSION = ctx.SCRIPT_VERSION
     _ctx = ctx
 
+
 def dispatch(args, ctx):
     pass
 
+
 def analyze_server_crash(exit_code, uptime_str=None):
     start_time = time.time()
+    logger.info(f"Starting crash analysis (exit_code={exit_code})")
     print("\n" + "=" * 50)
     uptime_seconds, uptime_display, crash_time = get_uptime()
     if uptime_str:
@@ -77,9 +81,12 @@ def analyze_server_crash(exit_code, uptime_str=None):
     else:
         print("\nPlease check the crash report for details about the server crash.\n")
     elapsed_time = time.time() - start_time
+    logger.info(f"Crash analysis completed in {elapsed_time:.2f}s, report: {report_file}")
     print(f"Crash analysis completed in {elapsed_time:.2f}s!\n")
 
+
 def collect_crash_data(log_file, exit_code, uptime_str=None, crash_time_str=None):
+    logger.info(f"Collecting crash data from {log_file}")
     data = {
         'exit_code': exit_code,
         'uptime': uptime_str or "Unknown",
@@ -94,11 +101,14 @@ def collect_crash_data(log_file, exit_code, uptime_str=None, crash_time_str=None
             with open(log_file, 'r', encoding='utf-8', errors='ignore') as f:
                 data['log_lines'] = f.readlines()
         except Exception as e:
+            logger.error(f"Could not read log file: {e}")
             print(f"Warning: Could not read log file: {e}")
             data['log_lines'] = []
+    logger.info(f"Collected {len(data['log_lines'])} log lines")
     analyze_log_content(data)
     analyze_plugin_dependencies(data)
     return data
+
 
 def analyze_log_content(data):
     log_lines = data['log_lines']
@@ -162,6 +172,8 @@ def analyze_log_content(data):
         warn_errors.append(context_lines)
     data['warn_errors'] = warn_errors
     data['keywords_found'] = {k: v for k, v in keywords.items() if v}
+    logger.info(f"Log analysis: {len(warn_errors)} error contexts, {len(data['keywords_found'])} keyword groups")
+
 
 def analyze_plugin_dependencies(data):
     try:
@@ -217,6 +229,7 @@ def analyze_plugin_dependencies(data):
             'missing_hard': {},
             'missing_soft': {}
         }
+
 
 def get_environment_info():
     info = {}
@@ -327,6 +340,7 @@ def get_environment_info():
     except:
         info['additional_params'] = "None"
     return info
+
 
 def generate_crash_report(report_file, data, log_file, exit_code, uptime_display, crash_time):
     logger.info(f"Starting crash report generation for exit code: {exit_code}")
@@ -497,7 +511,9 @@ def generate_crash_report(report_file, data, log_file, exit_code, uptime_display
         print(f"Error generating crash report: {e}\n")
         traceback.print_exc()
 
+
 def check_logs_for_errors():
+    logger.info("Scanning latest.log for error indicators")
     log_file = BASE_DIR / "logs" / "latest.log"
     if not log_file.exists():
         return False
@@ -522,11 +538,15 @@ def check_logs_for_errors():
             line_lower = line.lower()
             for keyword in error_keywords:
                 if keyword.lower() in line_lower:
+                    logger.info(f"Error indicator found in latest.log: {keyword}")
                     return True
+        logger.info("No error indicators found in latest.log")
         return False
     except Exception as e:
+        logger.error(f"Error reading log file: {e}")
         print(f"Error reading log file: {e}\n")
         return False
+
 
 def ask_user_for_crash_analysis():
     print("\n" + "=" * 61)
@@ -551,12 +571,15 @@ def ask_user_for_crash_analysis():
         print(" N - No, ignore the warnings and exit normally")
         choice = input("\nEnter your choice (Y/N): ").strip().upper()
         if choice == 'Y':
+            logger.info("User requested crash analysis after normal exit")
             return True
         elif choice == 'N':
+            logger.info("User skipped crash analysis after normal exit")
             print("\nContinuing without analysis...")
             return False
         else:
             print("Please enter Y or N.")
+
 
 def handle_server_crash(process, uptime_str=None):
     if process.returncode == 0:
@@ -567,6 +590,7 @@ def handle_server_crash(process, uptime_str=None):
     if not uptime_str:
         _, uptime_str, _ = get_uptime()
     analyze_server_crash(process.returncode, uptime_str)
+
 
 def ask_user_for_interrupt_analysis():
     print("\n" + "=" * 60)
@@ -591,8 +615,10 @@ def ask_user_for_interrupt_analysis():
         print(" N - No, this was an intentional interrupt")
         choice = input("\nEnter your choice (Y/N): ").strip().upper()
         if choice == 'Y':
+            logger.info("User requested interrupt analysis")
             return True
         elif choice == 'N':
+            logger.info("User skipped interrupt analysis")
             print("\nContinuing without analysis...")
             return False
         else:

@@ -34,6 +34,7 @@ format_file_size = None
 safe_rmtree = None
 _unlock_with_logging = None
 
+
 def bind(ctx):
     global BASE_DIR, BUNDLES_DIR, CONFIG_FILE, logger
     global create_lock, remove_lock, load_config, get_exclude_list
@@ -50,6 +51,7 @@ def bind(ctx):
     safe_rmtree = ctx.safe_rmtree
     _unlock_with_logging = ctx.unlock_with_logging
 
+
 def dispatch(args, ctx):
     if not args:
         return
@@ -59,6 +61,7 @@ def dispatch(args, ctx):
         backup_version()
     elif args[0] == "--rollback":
         rollback_version()
+
 
 def save_version(version):
     if not version:
@@ -147,6 +150,7 @@ def save_version(version):
                 logger.error(f"Failed to remove temporary directory {temp_dir}: {cleanup_error}")
         _unlock_with_logging("save_version")
 
+
 def backup_version():
     logger.info("Starting backup_version function")
     if not create_lock(["--backup"]):
@@ -234,6 +238,7 @@ def backup_version():
                 logger.error(f"Failed to remove temporary directory {temp_dir}: {cleanup_error}")
         _unlock_with_logging("backup")
 
+
 def format_backup_name(filename, version):
     if filename == "server.zip":
         return version
@@ -248,6 +253,7 @@ def format_backup_name(filename, version):
         except ValueError:
             pass
     return filename.replace(".zip", "")
+
 
 def rollback_version():
     logger.info("Starting rollback_version function")

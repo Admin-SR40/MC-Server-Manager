@@ -49,6 +49,7 @@ compare_versions = None
 show_info = None
 USER_AGENT = None
 
+
 def bind(ctx):
     global BASE_DIR, CONFIG_FILE, BUNDLES_DIR, SERVER_JAR, logger
     global create_lock, remove_lock, load_config, get_exclude_list
@@ -68,12 +69,14 @@ def bind(ctx):
     show_info = ctx.show_info
     USER_AGENT = ctx.USER_AGENT
 
+
 def _require_module(ctx, name):
     module = ctx.get_module(name)
     if module is None:
         print(f"\nRequired module '{name}' is not installed.")
         print(f'Use "--install {name}" to install it.\n')
     return module
+
 
 def dispatch(args, ctx):
     if not args:
@@ -101,6 +104,7 @@ def dispatch(args, ctx):
             upgrade_server()
     elif command == "--delete" and len(args) > 1:
         delete_version(args[1])
+
 
 def create_new_server():
     logger.info("Starting new server creation process")
@@ -266,6 +270,7 @@ def create_new_server():
         else:
             logger.error("Failed to remove new server creation lock")
 
+
 def check_for_updates(version):
     logger.info(f"Starting update check for version: {version}")
     print(f"\nChecking for updates for version {version}...")
@@ -393,10 +398,13 @@ def check_for_updates(version):
         print("No updates found.")
         return False
 
+
 def show_version_info(version):
+    logger.info(f"Showing version info for {version}")
     version_dir = BUNDLES_DIR / version
     core_zip_path = version_dir / "core.zip"
     if not core_zip_path.exists():
+        logger.warning(f"No core.zip found for version {version}")
         print(f"No core.zip found for version {version}")
         return
     try:
@@ -407,9 +415,12 @@ def show_version_info(version):
                     print("\nVersion Information:")
                     print(info_content)
             else:
+                logger.warning(f"No info.txt found for version {version}")
                 print(f"No info.txt found for version {version}")
     except Exception as e:
+        logger.error(f"Error reading version info for {version}: {e}")
         print(f"Error reading version info: {e}")
+
 
 def _list_remote_versions():
     """Fetch and display available Purpur server versions."""
@@ -707,6 +718,7 @@ Description:
         else:
             logger.error("Failed to remove download lock")
 
+
 def list_versions():
     BUNDLES_DIR.mkdir(parents=True, exist_ok=True)
     versions = [d.name for d in BUNDLES_DIR.iterdir() if d.is_dir()]
@@ -731,6 +743,7 @@ def list_versions():
         print(f" {i}. {item}")
     print("=" * 30)
     print("")
+
 
 def delete_version(version):
     logger.info(f"Starting delete_version function for version: {version}")
@@ -797,6 +810,7 @@ def delete_version(version):
         print(f"Error deleting version: {e}\n")
     finally:
         _unlock_with_logging("delete")
+
 
 def change_version(target_version):
     logger.info(f"Starting change_version function for target version: {target_version}")
@@ -903,6 +917,7 @@ def change_version(target_version):
         traceback.print_exc()
     finally:
         _unlock_with_logging("change_version")
+
 
 def upgrade_server(target_version=None, force=False):
     logger.info(f"Starting upgrade_server function, target_version={target_version}, force={force}")

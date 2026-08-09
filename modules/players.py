@@ -26,21 +26,25 @@ BASE_DIR = None
 SERVER_PROPERTIES = None
 logger = None
 
+
 def bind(ctx):
     global BASE_DIR, SERVER_PROPERTIES, logger
     BASE_DIR = ctx.BASE_DIR
     SERVER_PROPERTIES = ctx.SERVER_PROPERTIES
     logger = ctx.logger
 
+
 def dispatch(args, ctx):
     if args and args[0] == "--players":
         manage_player_lists()
+
 
 def truncate_text(text, max_length):
     text = str(text)
     if len(text) > max_length:
         return text[:max_length - 3] + "..."
     return text
+
 
 def generate_offline_uuid(username: str) -> str:
     data = f"OfflinePlayer:{username}".encode('utf-8')
@@ -52,10 +56,12 @@ def generate_offline_uuid(username: str) -> str:
     uuid_str = f"{hex_str[0:8]}-{hex_str[8:12]}-{hex_str[12:16]}-{hex_str[16:20]}-{hex_str[20:32]}"
     return uuid_str
 
+
 def format_uuid(uuid_str):
     if len(uuid_str) == 32 and '-' not in uuid_str:
         return f"{uuid_str[:8]}-{uuid_str[8:12]}-{uuid_str[12:16]}-{uuid_str[16:20]}-{uuid_str[20:32]}"
     return uuid_str
+
 
 def get_mojang_uuid(username):
     logger.info(f"Fetching Mojang UUID for username: {username}")
@@ -90,6 +96,7 @@ def get_mojang_uuid(username):
         logger.error(f"Unexpected error fetching UUID for '{username}' - {type(e).__name__}: {e}")
         return None, username
 
+
 def is_online_mode():
     if not SERVER_PROPERTIES.exists():
         logger.warning("server.properties file not found, using default online-mode=true")
@@ -109,6 +116,7 @@ def is_online_mode():
         logger.error(f"Error reading online-mode from server.properties: {e}")
         print(f"Error reading server.properties: {e}")
         return True
+
 
 def format_list_table(items, list_type):
     if not items:
@@ -156,6 +164,7 @@ def format_list_table(items, list_type):
             table.append(row)
         table.append("╚" + "═" * name_width + "╩" + "═" * uuid_width + "╝")
     return "\n".join(table)
+
 
 def manage_player_lists():
     logger.info("Starting player list management")
@@ -236,6 +245,7 @@ def manage_player_lists():
         logger.error(f"Error in player list management: {e}")
         print(f"Error: {e}\n")
 
+
 def delete_from_list(items, list_type, file_path):
     logger.info(f"Starting delete operation on {list_type}")
     if not items:
@@ -292,6 +302,7 @@ def delete_from_list(items, list_type, file_path):
     except Exception as e:
         logger.error(f"Error deleting from {list_type}: {e}")
         print(f"Error deleting from {list_type}: {e}\n")
+
 
 def add_to_list(items, list_type, file_path):
     logger.info(f"Starting add operation to {list_type}")

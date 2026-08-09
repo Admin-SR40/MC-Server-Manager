@@ -30,6 +30,7 @@ safe_rmtree = None
 format_file_size = None
 _unlock_with_logging = None
 
+
 def bind(ctx):
     global BASE_DIR, logger, create_lock, remove_lock
     global safe_rmtree, format_file_size, _unlock_with_logging
@@ -41,6 +42,7 @@ def bind(ctx):
     format_file_size = ctx.format_file_size
     _unlock_with_logging = ctx.unlock_with_logging
 
+
 def dispatch(args, ctx):
     if not args:
         return
@@ -49,8 +51,11 @@ def dispatch(args, ctx):
     elif args[0] == "--dump":
         dump_logs()
 
+
 def cleanup_files():
+    logger.info("Starting cleanup operation")
     if not create_lock(["--cleanup"]):
+        logger.error("Could not create task lock")
         print("\nError: Could not create task lock\n")
         return
     try:
@@ -99,10 +104,13 @@ def cleanup_files():
                     freed_space += file_size
                     print(f"Deleted: {file_path}")
             except Exception as e:
+                logger.error(f"Error deleting {file_path}: {e}")
                 print(f"Error deleting {file_path}: {e}\n")
+        logger.info(f"Cleanup completed: deleted {deleted_count} files, freed {freed_space} bytes")
         print(f"\nCleanup completed. Deleted {deleted_count} files, freed {freed_space} bytes (~{freed_space // (1024*1024)} MB).\n")
     finally:
         remove_lock()
+
 
 def dump_logs():
     command = ["--dump"] + sys.argv[2:]

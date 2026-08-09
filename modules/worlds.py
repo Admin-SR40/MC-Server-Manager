@@ -29,6 +29,7 @@ remove_lock = None
 load_config = None
 format_file_size = None
 
+
 def bind(ctx):
     global BASE_DIR, BUNDLES_DIR, WORLDS_DIR, SERVER_PROPERTIES, logger
     global create_lock, remove_lock, load_config, format_file_size
@@ -41,6 +42,7 @@ def bind(ctx):
     remove_lock = ctx.remove_lock
     load_config = ctx.load_config
     format_file_size = ctx.format_file_size
+
 
 def dispatch(args, ctx):
     if not args or args[0] != "--worlds":
@@ -56,6 +58,7 @@ def dispatch(args, ctx):
             sys.exit(1)
     else:
         manage_worlds()
+
 
 def manage_worlds(mode=None):
     if not create_lock(["--worlds"] + ([mode] if mode else [])):
@@ -157,6 +160,7 @@ def manage_worlds(mode=None):
         else:
             logger.error("Failed to remove world management lock")
 
+
 def delete_worlds(world_info):
     try:
         logger.info("Starting world deletion process")
@@ -257,6 +261,7 @@ def delete_worlds(world_info):
         logger.error(f"Error in delete_worlds(): {e}")
         print(f"Error: {e}\n")
 
+
 def backup_worlds(world_info):
     try:
         logger.info("Starting world backup process")
@@ -343,6 +348,7 @@ def backup_worlds(world_info):
                 logger.info("Removed incomplete backup file")
             except:
                 logger.warning("Could not remove incomplete backup file")
+
 
 def import_world():
     logger.info("Starting world import utility")
@@ -447,6 +453,7 @@ def import_world():
     except Exception as e:
         logger.error(f"Error importing world: {e}", exc_info=True)
         print(f"Error importing world: {e}\n")
+
 
 def configure_world_seed():
     logger.info("Starting world seed configuration")
