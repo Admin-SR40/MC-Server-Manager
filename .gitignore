@@ -1,0 +1,7 @@
+__pycache__/
+logs/
+config/
+bundles/
+task.lock
+*.bak
+*.new
