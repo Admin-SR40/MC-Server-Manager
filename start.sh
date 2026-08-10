@@ -161,14 +161,29 @@ def _unlock_with_logging(op_name):
 # ───────────────────────────────────────────────────────────────────
 
 
+class AlignedFormatter(logging.Formatter):
+    """Formatter with aligned, abbreviated level names (INFO/WARN/ERROR)."""
+    LEVEL_NAMES = {
+        logging.DEBUG: "DEBUG",
+        logging.INFO: "INFO",
+        logging.WARNING: "WARN",
+        logging.ERROR: "ERROR",
+        logging.CRITICAL: "CRIT",
+    }
+
+    def format(self, record):
+        record.levelname = self.LEVEL_NAMES.get(record.levelno, record.levelname)
+        return super().format(record)
+
+
 def setup_logger():
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     logger = logging.getLogger("mc-manager")
     logger.setLevel(logging.INFO)
     if logger.handlers:
         return logger
-    formatter = logging.Formatter(
-        fmt="%(asctime)s %(levelname)s > %(message)s",
+    formatter = AlignedFormatter(
+        fmt="%(asctime)s %(levelname)-5s > %(message)s",
         datefmt="%Y/%m/%d %H:%M:%S"
     )
     file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
