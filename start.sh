@@ -1928,9 +1928,11 @@ def main():
     if args and args[0] == "--install":
         try:
             run_install_flow(args[1:], first_run=not is_modules_environment_installed())
+            logger.info("Command execution completed")
         except (KeyboardInterrupt, EOFError):
             logger.warning("Script interrupted by user (KeyboardInterrupt)")
             print("\n\nScript interrupted by user\n")
+        logger.info("Exiting script\n")
         return
     if not is_core_only and not is_modules_environment_installed():
         logger.info("No modules installed, entering first-run install flow")
@@ -1941,11 +1943,13 @@ def main():
             print("\n\nScript interrupted by user\n")
         if not is_modules_environment_installed():
             print("No modules installed. Run '--install' to set up modules.\n")
+            logger.info("Exiting script\n")
             return
     try:
         logger.info("Checking environment...")
         if not check_environment_change():
             logger.warning("Environment check failed or user chose to exit")
+            logger.info("Exiting script\n")
             return
         pending_command = handle_pending_task()
         if pending_command:
@@ -1990,6 +1994,7 @@ def main():
     except KeyboardInterrupt:
         logger.warning("Script interrupted by user (KeyboardInterrupt)")
         print("\n\nScript interrupted by user\n")
+        logger.info("Exiting script\n")
         sys.exit(0)
     except SystemExit as e:
         logger.info(f"Script exiting with code: {e.code}\n")
