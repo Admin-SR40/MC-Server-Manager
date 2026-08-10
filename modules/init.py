@@ -452,7 +452,7 @@ def init_config(prefill_version=None):
         logger.warning("Configuration file already exists, will be overwritten")
         print("\nConfiguration file already exists!")
         print("This will replace your current configuration.")
-        confirm = input("\nDo you want to continue? (Y/N): ").strip().upper()
+        confirm = input("\nDo you want to continue? (y/N): ").strip().upper() or "N"
         if confirm != "Y":
             logger.info("User cancelled initialization, existing configuration preserved")
             print("\nOperation canceled.\nExisting configuration preserved.\n")
@@ -496,7 +496,7 @@ def init_config(prefill_version=None):
         if detected_version != "unknown":
             logger.info(f"Detected server version: {detected_version}")
             print(f"\nDetected server version: {detected_version}")
-            use_detected = input("Use this version? (Y/N): ").strip().upper()
+            use_detected = input("Use this version? (Y/n): ").strip().upper() or "Y"
             if use_detected == "Y":
                 version = detected_version
                 logger.info("User accepted detected version")
@@ -531,7 +531,7 @@ def init_config(prefill_version=None):
             if max_ram < 512:
                 logger.warning(f"Low RAM allocation requested: {max_ram} MB")
                 print("Warning: Allocating less than 512MB may cause server instability!")
-                confirm = input("Continue anyway? (Y/N): ").strip().upper()
+                confirm = input("Continue anyway? (y/N): ").strip().upper() or "N"
                 if confirm == "Y":
                     logger.info("User confirmed low RAM allocation")
                     break
@@ -698,7 +698,7 @@ def init_config_auto(prefill_version=None):
     if not available_versions:
         logger.warning("No Java installations found!")
         print("\nNo Java installations found!")
-        custom = input("Would you like to specify a custom Java path? (Y/N): ").strip().upper()
+        custom = input("Would you like to specify a custom Java path? (y/N): ").strip().upper() or "N"
         if custom == "Y":
             while True:
                 custom_path = input("Enter custom Java path: ").strip()
@@ -1017,7 +1017,7 @@ def standardize_server_structure():
         print("You should backup your files before this")
         print("action, the standardizer is only designed")
         print("for normal Minecraft server file structure.\n")
-        choice = input("Would you like to continue? (Y/N): ").strip().upper()
+        choice = input("Would you like to continue? (y/N): ").strip().upper() or "N"
         logger.info(f"User confirmation input: {choice}")
         if choice != "Y":
             print("\nOperation cancelled.\n")

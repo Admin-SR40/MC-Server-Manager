@@ -48,12 +48,13 @@ _unlock_with_logging = None
 compare_versions = None
 show_info = None
 USER_AGENT = None
+_ctx = None
 
 
 def bind(ctx):
     global BASE_DIR, CONFIG_FILE, BUNDLES_DIR, SERVER_JAR, logger
     global create_lock, remove_lock, load_config, get_exclude_list
-    global format_file_size, _unlock_with_logging, compare_versions, show_info, USER_AGENT
+    global format_file_size, _unlock_with_logging, compare_versions, show_info, USER_AGENT, _ctx
     BASE_DIR = ctx.BASE_DIR
     CONFIG_FILE = ctx.CONFIG_FILE
     BUNDLES_DIR = ctx.BUNDLES_DIR
@@ -68,6 +69,7 @@ def bind(ctx):
     compare_versions = ctx.compare_versions
     show_info = ctx.show_info
     USER_AGENT = ctx.USER_AGENT
+    _ctx = ctx
 
 
 def _require_module(ctx, name):
@@ -166,7 +168,7 @@ def create_new_server():
             logger.info(f"Selected version: {selected_version}")
             print(f"Selected version: {selected_version}")
             if CONFIG_FILE.exists():
-                backup_mod = _require_module(ctx, "backup")
+                backup_mod = _require_module(_ctx, "backup")
                 if backup_mod is None:
                     print("Cannot create a new server without the backup module.")
                     return
@@ -178,7 +180,7 @@ def create_new_server():
             return
         if check_for_updates(selected_version):
             logger.info(f"Update available for version {selected_version}")
-            confirm = input("\nUpdate to latest build before creating? (Y/N): ").strip().upper()
+            confirm = input("\nUpdate to latest build before creating? (y/N): ").strip().upper() or "N"
             if confirm == "Y":
                 logger.info("User chose to update to latest build")
                 print("Updating to latest build...")
@@ -194,6 +196,8 @@ def create_new_server():
             return
         logger.info("Cleaning current directory for new server")
         print("\nCreating new server...")
+        if _ctx:
+            _ctx.preserve_modules_config()
         exclude_list = get_exclude_list()
         logger.info(f"Using exclude list with {len(exclude_list)} patterns")
         items_removed = 0
@@ -232,7 +236,7 @@ def create_new_server():
             if choice == "1":
                 logger.info("User chose manual initialization")
                 print("Running manual initialization...")
-                init_mod = _require_module(ctx, "init")
+                init_mod = _require_module(_ctx, "init")
                 if init_mod:
                     init_mod.init_config(prefill_version=selected_version)
                 else:
@@ -242,7 +246,7 @@ def create_new_server():
             elif choice == "2":
                 logger.info("User chose auto initialization")
                 print("Running auto initialization...")
-                init_mod = _require_module(ctx, "init")
+                init_mod = _require_module(_ctx, "init")
                 if init_mod:
                     init_mod.init_config_auto(prefill_version=selected_version)
                 else:
@@ -265,6 +269,8 @@ def create_new_server():
         logger.error(f"Error in create_new_server(): {e}")
         print(f"Error during new server creation: {e}\n")
     finally:
+        if _ctx:
+            _ctx.restore_modules_config()
         if remove_lock():
             logger.info("New server creation lock released")
         else:
@@ -308,7 +314,8 @@ def check_for_updates(version):
         print("Could not determine local build number.")
         return False
     logger.info(f"Querying PurpurMC API for version {version}")
-    api_url = f"https://api.purpurmc.org/v2/purpur/{version}"
+    api_base = os.environ.get("MCSM_PURPUR_API", "https://api.purpurmc.org/v2/purpur")
+    api_url = f"{api_base}/{version}"
     try:
         logger.info(f"Making API request to: {api_url}")
         request = urllib.request.Request(api_url)
@@ -355,7 +362,7 @@ def check_for_updates(version):
     for build in sorted(all_builds, key=int, reverse=True):
         try:
             logger.info(f"Checking build {build} for successful status...")
-            build_url = f"https://api.purpurmc.org/v2/purpur/{version}/{build}"
+            build_url = f"{api_base}/{version}/{build}"
             request = urllib.request.Request(build_url)
             request.add_header("User-Agent", USER_AGENT)
             start_time = time.time()
@@ -427,7 +434,8 @@ def _list_remote_versions():
     logger.info("Fetching available versions list from PurpurMC API")
     try:
         start_time = time.time()
-        request = urllib.request.Request("https://api.purpurmc.org/v2/purpur")
+        api_base = os.environ.get("MCSM_PURPUR_API", "https://api.purpurmc.org/v2/purpur")
+        request = urllib.request.Request(api_base)
         request.add_header("User-Agent", USER_AGENT)
         with urllib.request.urlopen(request, timeout=10) as response:
             elapsed_time = time.time() - start_time
@@ -491,7 +499,8 @@ def download_version(version=None):
             print(f"\nFetching version information for {version}...")
             try:
                 logger.info(f"Querying version info from PurpurMC API: {version}")
-                api_url = f"https://api.purpurmc.org/v2/purpur/{version}"
+                api_base = os.environ.get("MCSM_PURPUR_API", "https://api.purpurmc.org/v2/purpur")
+                api_url = f"{api_base}/{version}"
                 request = urllib.request.Request(api_url)
                 request.add_header("User-Agent", USER_AGENT)
                 start_time = time.time()
@@ -515,7 +524,7 @@ def download_version(version=None):
                 for build in all_builds:
                     logger.info(f"Checking build {build} for successful status...")
                     try:
-                        build_url = f"https://api.purpurmc.org/v2/purpur/{version}/{build}"
+                        build_url = f"{api_base}/{version}/{build}"
                         logger.info(f"Querying build info: {build_url}")
                         request = urllib.request.Request(build_url)
                         request.add_header("User-Agent", USER_AGENT)
@@ -582,21 +591,21 @@ Description:
                     logger.error(f"No successful builds found for version {version} after checking {len(all_builds)} builds")
                     print(f"No successful builds found for version {version}\n")
                     return
-                confirm = input("Do you want to download this version? (Y/N): ").strip().upper()
+                confirm = input("Do you want to download this version? (y/N): ").strip().upper() or "N"
                 if confirm != "Y":
                     logger.info("User cancelled download")
                     print("Download canceled.\n")
                     return
                 if zip_path.exists():
                     logger.warning(f"Version {version} already exists at {zip_path}")
-                    confirm = input(f"Version {version} already exists. Overwrite? (Y/N): ").strip().upper()
+                    confirm = input(f"Version {version} already exists. Overwrite? (y/N): ").strip().upper() or "N"
                     if confirm != "Y":
                         logger.info("User chose not to overwrite existing version")
                         print("Download canceled.\n")
                         return
                     else:
                         logger.info("User confirmed overwrite of existing version")
-                download_url = f"https://api.purpurmc.org/v2/purpur/{version}/{successful_build}/download"
+                download_url = f"{api_base}/{version}/{successful_build}/download"
                 logger.info(f"Starting download from: {download_url}")
                 print(f"\nDownloading from {download_url}...")
                 print("This may take a while depending on your network speed.")
@@ -721,7 +730,10 @@ Description:
 
 def list_versions():
     BUNDLES_DIR.mkdir(parents=True, exist_ok=True)
-    versions = [d.name for d in BUNDLES_DIR.iterdir() if d.is_dir()]
+    versions = [
+        d.name for d in BUNDLES_DIR.iterdir()
+        if d.is_dir() and re.match(r"^\d+\.\d+(\.\d+)?$", d.name)
+    ]
     if not versions:
         logger.info("No versions available in bundles directory")
         print("\nNo versions available in bundles directory\n")
@@ -778,7 +790,7 @@ def delete_version(version):
         except Exception as size_error:
             logger.warning(f"Could not calculate directory size for {version}: {size_error}")
         
-        confirm = input(f"\nAre you sure you want to delete version '{version}'? (Y/N): ")
+        confirm = input(f"\nAre you sure you want to delete version '{version}'? (y/N): ").strip().upper() or "N"
         logger.info(f"User confirmation prompt for deleting version {version}: {confirm}")
         if confirm != "Y":
             logger.info(f"User cancelled deletion of version {version}")
@@ -840,7 +852,7 @@ def change_version(target_version):
         logger.info(f"Current server version: {current_version}, target version: {target_version}")
         logger.info(f"Saving current version {current_version} before switching")
         print(f"Saving current version {current_version}...")
-        backup_mod = _require_module(ctx, "backup")
+        backup_mod = _require_module(_ctx, "backup")
         if backup_mod is None:
             print("Cannot switch versions without the backup module.")
             return
@@ -859,6 +871,8 @@ def change_version(target_version):
         logger.info(f"Using exclude list with {len(exclude_list)} patterns for cleanup")
         logger.info(f"Exclude patterns: {exclude_list}")
         logger.info("Starting cleanup of current directory")
+        if _ctx:
+            _ctx.preserve_modules_config()
         deleted_count = 0
         skipped_count = 0
         for item in BASE_DIR.iterdir():
@@ -916,6 +930,8 @@ def change_version(target_version):
         print(f"Error switching version: {e}\n")
         traceback.print_exc()
     finally:
+        if _ctx:
+            _ctx.restore_modules_config()
         _unlock_with_logging("change_version")
 
 
@@ -947,12 +963,12 @@ def upgrade_server(target_version=None, force=False):
             print("Please ensure the server is properly configured.\n")
             return
         print(f"Current server version: {current_version}")
-        backup_choice = input("\nDo you want to create a backup before upgrading? (Y/N): ").strip().upper()
+        backup_choice = input("\nDo you want to create a backup before upgrading? (y/N): ").strip().upper() or "N"
         logger.info(f"User backup choice: {backup_choice}")
         if backup_choice == "Y":
             logger.info("User chose to create backup before upgrade")
             print("Creating backup...")
-            backup_mod = _require_module(ctx, "backup")
+            backup_mod = _require_module(_ctx, "backup")
             if backup_mod:
                 backup_mod.backup_version()
             else:
@@ -1085,7 +1101,7 @@ def upgrade_server(target_version=None, force=False):
                         print(f"Current: {current_version} (major {current_major})")
                         print(f"Selected: {selected_version} (major {selected_major})")
                         print("This upgrade may cause world corruption or plugin incompatibility!")
-                        confirm = input("\nAre you sure you want to continue? (Y/N): ").strip().upper()
+                        confirm = input("\nAre you sure you want to continue? (y/N): ").strip().upper() or "N"
                         logger.info(f"User confirmation for major version mismatch: {confirm}")
                         if confirm != "Y":
                             logger.info("User cancelled upgrade due to major version mismatch")
@@ -1095,7 +1111,7 @@ def upgrade_server(target_version=None, force=False):
                         logger.warning(f"Downgrade detected: from {current_version} to {selected_version}")
                         print(f"\nWARNING: Downgrading from {current_version} to {selected_version}")
                         print("This may cause data loss or compatibility issues!")
-                        confirm = input("\nAre you sure you want to continue? (Y/N): ").strip().upper()
+                        confirm = input("\nAre you sure you want to continue? (y/N): ").strip().upper() or "N"
                         logger.info(f"User confirmation for downgrade: {confirm}")
                         if confirm != "Y":
                             logger.info("User cancelled downgrade")
@@ -1106,7 +1122,7 @@ def upgrade_server(target_version=None, force=False):
         if selected_version == current_version:
             logger.info("Selected version is same as current version")
             print("Selected version is the same as current version.")
-            reinstall = input("Do you want to reinstall the current version? (Y/N): ").strip().upper()
+            reinstall = input("Do you want to reinstall the current version? (y/N): ").strip().upper() or "N"
             logger.info(f"User reinstall choice: {reinstall}")
             if reinstall != "Y":
                 logger.info("User cancelled reinstall")
@@ -1114,7 +1130,7 @@ def upgrade_server(target_version=None, force=False):
                 return
         if check_for_updates(selected_version):
             logger.info(f"Update available for version {selected_version}")
-            update_choice = input("\nNewer build available. Download now? (Y/N): ").strip().upper()
+            update_choice = input("\nNewer build available. Download now? (y/N): ").strip().upper() or "N"
             logger.info(f"User update choice: {update_choice}")
             if update_choice == "Y":
                 logger.info("User chose to download newer build")
@@ -1123,7 +1139,7 @@ def upgrade_server(target_version=None, force=False):
             else:
                 logger.info("User skipped downloading newer build")
         show_version_info(selected_version)
-        confirm = input(f"\nAre you sure you want to upgrade from {current_version} to {selected_version}? (Y/N): ").strip().upper()
+        confirm = input(f"\nAre you sure you want to upgrade from {current_version} to {selected_version}? (y/N): ").strip().upper() or "N"
         logger.info(f"Final user confirmation for upgrade: {confirm}")
         if confirm != "Y":
             logger.info("User cancelled upgrade after final confirmation")
@@ -1187,9 +1203,9 @@ def upgrade_server(target_version=None, force=False):
                     logger.info(f"Successfully removed temporary directory: {temp_jar_dir}")
                 except Exception as e:
                     logger.error(f"Failed to remove temporary directory {temp_jar_dir}: {e}")
-        plugins_mod = ctx.get_module("plugins")
+        plugins_mod = _ctx.get_module("plugins") if _ctx else None
         if plugins_mod:
-            plugin_choice = input("\nDo you want to disable all plugins for data safety? (Y/N): ").strip().upper()
+            plugin_choice = input("\nDo you want to disable all plugins for data safety? (y/N): ").strip().upper() or "N"
             logger.info(f"User plugin disable choice: {plugin_choice}")
             if plugin_choice == "Y":
                 if plugins_mod.disable_all_plugins():

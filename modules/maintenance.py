@@ -85,7 +85,7 @@ def cleanup_files():
         print("=" * 50)
         total_size = sum(os.path.getsize(f) for f in files_to_clean if os.path.exists(f))
         print(f"Total space to free: {total_size} bytes (~{total_size // (1024*1024)} MB)\n")
-        confirm = input("Are you sure you want to delete these files? (Y/N): ")
+        confirm = input("Are you sure you want to delete these files? (y/N): ").strip().upper() or "N"
         if confirm != "Y":
             print("Cleanup canceled.\n")
             return
@@ -219,7 +219,7 @@ def dump_logs():
                     print(f"\nResult saved to: {output_file.name}")
                     print(f"File size: {file_size} bytes (~{file_size // (1024*1024)} MB)")
                     print("=" * 45)
-                    confirm = input("\nDo you want to delete the original log files? (Y/N): ").strip().upper()
+                    confirm = input("\nDo you want to delete the original log files? (y/N): ").strip().upper() or "N"
                     logger.info(f"User confirmation for log deletion: {confirm}")
                     if confirm == "Y":
                         logger.info("Starting deletion of original log files")
@@ -311,7 +311,7 @@ def dump_logs():
                 print(f"Result saved to: {output_file.name}")
                 print(f"File size: {file_size} bytes (~{file_size // (1024*1024)} MB)")
                 print("=" * 45)
-                confirm = input("\nDo you want to delete the original log files? (Y/N): ").strip().upper()
+                confirm = input("\nDo you want to delete the original log files? (y/N): ").strip().upper() or "N"
                 logger.info(f"User confirmation for full log deletion: {confirm}")
                 if confirm == "Y":
                     logger.info("Starting deletion of all original log files")

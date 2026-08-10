@@ -119,10 +119,12 @@ def print_banner(title, width=50):
 
 
 def confirm_action(prompt, default_no=True):
-    """Ask a Y/N question, return True if user confirms."""
-    default_hint = " (Y/N): " if default_no else " (y/N): "
+    """Ask a Y/N question; the uppercase option is the Enter default."""
+    default_hint = " (y/N): " if default_no else " (Y/n): "
     while True:
         choice = input(prompt + default_hint).strip().upper()
+        if not choice:
+            return not default_no
         if choice == 'Y':
             return True
         if choice == 'N':
@@ -312,7 +314,7 @@ def check_environment_change():
             print("with an older version of the script.")
             print("\nIt is recommended to run --init or --init auto to ensure")
             print("proper environment detection in the future.")
-            choice = input("\nContinue anyway? (Y/N): ").strip().upper()
+            choice = input("\nContinue anyway? (y/N): ").strip().upper() or "N"
             if choice != 'Y':
                 logger.info("User chose to exit due to missing device data")
                 print("Exiting script...\n")
@@ -600,7 +602,7 @@ def handle_pending_task():
                 sys.exit(0)
             elif choice == 'F':
                 logger.warning("User chose to force clear lock - requesting confirmation")
-                confirm = input("\nAre you sure? This may cause DATA CORRUPTION! (Y/N): ").strip().upper()
+                confirm = input("\nAre you sure? This may cause DATA CORRUPTION! (y/N): ").strip().upper() or "N"
                 if confirm == 'Y':
                     logger.warning("User confirmed force clearing lock - proceeding")
                     print("\nForce clearing lock and continuing...\n")
@@ -817,12 +819,44 @@ def get_exclude_list():
             logger.warning(f"Could not read additional exclusions from config: {e}")
     return exclude_list
 
+def preserve_modules_config():
+    """Back up config/modules.cfg before destructive server operations."""
+    if not MODULES_CONFIG_FILE.exists():
+        return False
+    try:
+        backup_dir = BUNDLES_DIR / ".meta"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(MODULES_CONFIG_FILE, backup_dir / "modules.cfg")
+        logger.info(f"Modules config preserved: {MODULES_CONFIG_FILE}")
+        return True
+    except Exception as e:
+        logger.warning(f"Could not preserve modules config: {e}")
+        return False
+
+def restore_modules_config():
+    """Restore config/modules.cfg after destructive server operations."""
+    backup = BUNDLES_DIR / ".meta" / "modules.cfg"
+    if not backup.exists():
+        return False
+    try:
+        MODULES_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(backup, MODULES_CONFIG_FILE)
+        backup.unlink()
+        logger.info(f"Modules config restored: {MODULES_CONFIG_FILE}")
+        return True
+    except Exception as e:
+        logger.warning(f"Could not restore modules config: {e}")
+        return False
+
 
 def clear_screen():
     if platform.system() == "Windows":
         os.system("cls")
     else:
         os.system("clear")
+
+_config_cache = {}
+_config_mtime = 0
 
 
 def load_config():
@@ -1098,14 +1132,14 @@ def start_server():
             print(f"\nServer uptime: {uptime_str}")
         if process.returncode != 0:
             logger.warning(f"Server crashed with exit code: {process.returncode}")
-            crash_mod = get_module("crash")
+            crash_mod = load_module("crash")
             if crash_mod:
                 crash_mod.handle_server_crash(process, uptime_str)
             else:
                 print("\nCrash analysis module is not installed.")
                 print('Use "--install crash" to enable crash reports.\n')
         else:
-            crash_mod = get_module("crash")
+            crash_mod = load_module("crash")
             if crash_mod and crash_mod.check_logs_for_errors():
                 logger.info("Server stopped normally but errors found in logs")
                 if crash_mod.ask_user_for_crash_analysis():
@@ -1132,7 +1166,7 @@ def start_server():
             process.wait()
             logger.info("Server process terminated")
         print("Checking for potential issues that caused the interrupt...")
-        crash_mod = get_module("crash")
+        crash_mod = load_module("crash")
         if crash_mod and crash_mod.check_logs_for_errors():
             logger.info("Errors found in logs after user interrupt")
             if crash_mod.ask_user_for_interrupt_analysis():
@@ -1160,7 +1194,7 @@ def start_server():
         if process:
             uptime_seconds, uptime_str, _ = get_uptime()
             logger.warning(f"Handling server crash after error, uptime: {uptime_str}")
-            crash_mod = get_module("crash")
+            crash_mod = load_module("crash")
             if crash_mod:
                 crash_mod.handle_server_crash(process, uptime_str)
             else:
@@ -1225,7 +1259,7 @@ def check_self_update(force=False):
             print(f"\nNew version {latest_version} is available!")
         else:
             print("\nForce mode: core update check bypassed.")
-        confirm = input("Do you want to download and update the core script? (Y/N): ").strip().upper()
+        confirm = input("Do you want to download and update the core script? (y/N): ").strip().upper() or "N"
         if confirm == "Y":
             logger.info("User confirmed core update")
             download_latest_version()
@@ -1402,7 +1436,7 @@ def choose_modules_dir():
                 print("Path cannot be empty.")
             else:
                 print("Invalid choice. Please enter 1, 2, or 3.")
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, EOFError):
         logger.warning("Module directory selection interrupted by user")
         print("\nInstallation canceled.\n")
         return None
@@ -1549,7 +1583,9 @@ def install_modules_from_info(update_info, names, interactive=True):
         resolve(name)
     if not to_install:
         logger.info("No modules to install (all requested modules already installed)")
-        if names:
+        if skipped:
+            print("Installation skipped: required dependencies were not confirmed.\n")
+        elif names:
             print("All selected modules are already installed.\n")
         else:
             print("Nothing to install.\n")
@@ -1675,7 +1711,7 @@ def run_install_flow(args=None, first_run=False):
             print("No modules selected. Installation canceled.\n")
             return False
         return install_modules_from_info(update_info, selected)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, EOFError):
         logger.warning("Module installation interrupted by user (KeyboardInterrupt)")
         print("\nInstallation canceled.\n")
         return False
@@ -1707,7 +1743,7 @@ def update_installed_modules(update_info, force=False):
         local = installed.get(name, {})
         local_version = local.get("version") if isinstance(local, dict) else "?"
         print(f" - {name}: {local_version} -> {cloud.get('version')}")
-    confirm = input("\nUpdate these modules now? (Y/N): ").strip().upper()
+    confirm = input("\nUpdate these modules now? (y/N): ").strip().upper() or "N"
     if confirm != "Y":
         print("Module updates canceled.\n")
         return
@@ -1798,6 +1834,8 @@ class CoreContext:
         self.get_uptime = get_uptime
         self.compare_versions = compare_versions
         self.USER_AGENT = USER_AGENT
+        self.preserve_modules_config = preserve_modules_config
+        self.restore_modules_config = restore_modules_config
 
     def get_module(self, name):
         return load_module(name)
@@ -1890,7 +1928,7 @@ def main():
     if args and args[0] == "--install":
         try:
             run_install_flow(args[1:], first_run=not is_modules_environment_installed())
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, EOFError):
             logger.warning("Script interrupted by user (KeyboardInterrupt)")
             print("\n\nScript interrupted by user\n")
         return
@@ -1898,7 +1936,7 @@ def main():
         logger.info("No modules installed, entering first-run install flow")
         try:
             run_install_flow(first_run=True)
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, EOFError):
             logger.warning("Script interrupted by user (KeyboardInterrupt)")
             print("\n\nScript interrupted by user\n")
         if not is_modules_environment_installed():

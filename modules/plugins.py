@@ -80,17 +80,17 @@ def get_plugin_info(plugin_path):
             try:
                 with jar.open('plugin.yml') as f:
                     plugin_data = yaml.safe_load(f)
-                    name = plugin_data.get('name', 'Unknown')
-                    version = plugin_data.get('version', 'Unknown')
-                    main_class = plugin_data.get('main', 'Unknown')
+                    name = str(plugin_data.get('name', 'Unknown'))
+                    version = str(plugin_data.get('version', 'Unknown'))
+                    main_class = str(plugin_data.get('main', 'Unknown'))
                     return name, version, main_class
             except KeyError:
                 try:
                     with jar.open('META-INF/plugin.yml') as f:
                         plugin_data = yaml.safe_load(f)
-                        name = plugin_data.get('name', 'Unknown')
-                        version = plugin_data.get('version', 'Unknown')
-                        main_class = plugin_data.get('main', 'Unknown')
+                        name = str(plugin_data.get('name', 'Unknown'))
+                        version = str(plugin_data.get('version', 'Unknown'))
+                        main_class = str(plugin_data.get('main', 'Unknown'))
                         return name, version, main_class
                 except KeyError:
                     name = plugin_path.stem
@@ -195,7 +195,7 @@ def manage_plugins_with_dependencies():
     disabled_count = len([p for p in plugins if not p['enabled']])
     logger.info(f"Plugin statistics: {enabled_count} enabled, {disabled_count} disabled")
     print("\n" + format_plugins_table(plugins))
-    choice = input("\nDo you want to toggle these plugins? (Y/N): ").strip().upper()
+    choice = input("\nDo you want to toggle these plugins? (y/N): ").strip().upper() or "N"
     logger.info(f"User choice for plugin toggle: {choice}")
     if choice != 'Y':
         logger.info("User cancelled plugin management")
@@ -272,7 +272,7 @@ def manage_plugins_with_dependencies():
                             continue
                         elif choice == '2':
                             logger.warning(f"User chose to force disable {plugin['name']}")
-                            confirm = input("Are you sure?\nThis may break other plugins or crash the server! (Y/N): ").strip().upper()
+                            confirm = input("Are you sure?\nThis may break other plugins or crash the server! (y/N): ").strip().upper() or "N"
                             if confirm == 'Y':
                                 logger.warning(f"User confirmed force disable for {plugin['name']}")
                                 try:
@@ -317,7 +317,7 @@ def manage_plugins_with_dependencies():
                             print("Invalid choice. Please enter 1, 2, 3, or C.\n")
                 else:
                     logger.info(f"Only soft dependencies found for {plugin['name']}")
-                    confirm = input(f"\nDo you still want to disable {plugin['name']}? (Y/N): ").strip().upper()
+                    confirm = input(f"\nDo you still want to disable {plugin['name']}? (y/N): ").strip().upper() or "N"
                     logger.info(f"User confirmation for soft dependency disable: {confirm}")   
                     if confirm == 'Y':
                         try:

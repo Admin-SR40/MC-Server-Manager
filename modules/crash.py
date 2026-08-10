@@ -569,7 +569,7 @@ def ask_user_for_crash_analysis():
         print("\nDo you want to analyze the logs for potential issues?")
         print(" Y - Yes, analyze the logs and generate a crash report")
         print(" N - No, ignore the warnings and exit normally")
-        choice = input("\nEnter your choice (Y/N): ").strip().upper()
+        choice = input("\nEnter your choice (y/N): ").strip().upper() or "N"
         if choice == 'Y':
             logger.info("User requested crash analysis after normal exit")
             return True
@@ -613,7 +613,7 @@ def ask_user_for_interrupt_analysis():
         print("\nDo you want to analyze the logs for potential issues?")
         print(" Y - Yes, analyze the logs and generate a crash report")
         print(" N - No, this was an intentional interrupt")
-        choice = input("\nEnter your choice (Y/N): ").strip().upper()
+        choice = input("\nEnter your choice (y/N): ").strip().upper() or "N"
         if choice == 'Y':
             logger.info("User requested interrupt analysis")
             return True

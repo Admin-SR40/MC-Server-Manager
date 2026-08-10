@@ -187,7 +187,7 @@ def delete_worlds(world_info):
         logger.info(f"Parsed indices for deletion: {selected_indices}")
         if 0 in selected_indices:
             logger.warning("User selected to delete ALL worlds")
-            confirm = input("\nAre you sure you want to delete ALL world folders?\nThis cannot be undone! (Y/N): ").strip().upper()
+            confirm = input("\nAre you sure you want to delete ALL world folders?\nThis cannot be undone! (y/N): ").strip().upper() or "N"
             if confirm != "Y":
                 logger.info("User cancelled deletion of all worlds")
                 print("Operation canceled.\n")
@@ -218,7 +218,7 @@ def delete_worlds(world_info):
                 size = delete_sizes[i]
                 print(f" - {w.name} ({format_file_size(size)})")
             logger.info(f"Total size to delete: {format_file_size(total_delete_size)}")
-            confirm = input("\nAre you sure you want to delete these world(s)?\nThis cannot be undone! (Y/N): ").strip().upper()
+            confirm = input("\nAre you sure you want to delete these world(s)?\nThis cannot be undone! (y/N): ").strip().upper() or "N"
             if confirm != "Y":
                 logger.info("User cancelled deletion of selected worlds")
                 print("Operation canceled.\n")
@@ -244,7 +244,7 @@ def delete_worlds(world_info):
         logger.info(f"Remaining worlds after deletion: {len(remaining)}")
         if not remaining:
             logger.info("All world folders have been removed")
-            choice = input("\nAll world folders have been removed.\nDo you want to configure a new world seed now? (Y/N): ").strip().upper()
+            choice = input("\nAll world folders have been removed.\nDo you want to configure a new world seed now? (y/N): ").strip().upper() or "N"
             if choice == "Y":
                 logger.info("User chose to configure new world seed")
                 configure_world_seed()
@@ -306,7 +306,7 @@ def backup_worlds(world_info):
         print(f" - {w.name} ({format_file_size(size)})")
     total_backup_size = sum(backup_sizes)
     logger.info(f"Total size to backup: {format_file_size(total_backup_size)} for {len(worlds_to_backup)} worlds")
-    confirm = input("\nProceed with backup? (Y/N): ").strip().upper()
+    confirm = input("\nProceed with backup? (y/N): ").strip().upper() or "N"
     if confirm != "Y":
         logger.info("User cancelled backup")
         print("Operation canceled.\n")
@@ -407,7 +407,7 @@ def import_world():
                 print("\nWarning: The following worlds already exist:")
                 for world in conflicting_worlds:
                     print(f" - {world}")
-                replace_choice = input("\nReplace existing worlds? (Y/N): ").strip().upper()
+                replace_choice = input("\nReplace existing worlds? (y/N): ").strip().upper() or "N"
                 if replace_choice != "Y":
                     logger.info("User chose not to replace existing worlds")
                     print("Import canceled.\n")

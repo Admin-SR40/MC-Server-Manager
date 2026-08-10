@@ -278,7 +278,7 @@ def delete_from_list(items, list_type, file_path):
             entries_to_delete.append(entry_info)
             print(f" - {entry_info}")
         logger.info(f"Entries to delete: {', '.join(entries_to_delete)}")
-        confirm = input("\nAre you sure? (Y/N): ").strip().upper()
+        confirm = input("\nAre you sure? (y/N): ").strip().upper() or "N"
         if confirm != 'Y':
             logger.info("User cancelled deletion after confirmation")
             print("Deletion cancelled.\n")
@@ -345,7 +345,7 @@ def add_to_list(items, list_type, file_path):
             print("\nWARNING: Server is in offline mode (online-mode=false).")
             print("UUIDs for offline players are generated locally and may differ from other servers.")
             print("This means the same username may have a different UUID on other servers.\n")
-            choice = input("Do you want to continue using offline UUIDs? (Y/N): ").strip().upper()
+            choice = input("Do you want to continue using offline UUIDs? (y/N): ").strip().upper() or "N"
             if choice != 'Y':
                 logger.info("User cancelled adding player in offline mode")
                 print("Operation cancelled.\n")

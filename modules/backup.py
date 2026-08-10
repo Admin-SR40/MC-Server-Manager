@@ -33,12 +33,13 @@ get_exclude_list = None
 format_file_size = None
 safe_rmtree = None
 _unlock_with_logging = None
+_ctx = None
 
 
 def bind(ctx):
     global BASE_DIR, BUNDLES_DIR, CONFIG_FILE, logger
     global create_lock, remove_lock, load_config, get_exclude_list
-    global format_file_size, safe_rmtree, _unlock_with_logging
+    global format_file_size, safe_rmtree, _unlock_with_logging, _ctx
     BASE_DIR = ctx.BASE_DIR
     BUNDLES_DIR = ctx.BUNDLES_DIR
     CONFIG_FILE = ctx.CONFIG_FILE
@@ -50,6 +51,7 @@ def bind(ctx):
     format_file_size = ctx.format_file_size
     safe_rmtree = ctx.safe_rmtree
     _unlock_with_logging = ctx.unlock_with_logging
+    _ctx = ctx
 
 
 def dispatch(args, ctx):
@@ -364,6 +366,8 @@ def rollback_version():
         logger.info(f"Using exclude list with {len(exclude_list)} patterns")
         logger.info(f"Exclude patterns: {exclude_list}")
         logger.info("Starting cleanup of current directory before rollback")
+        if _ctx:
+            _ctx.preserve_modules_config()
         deleted_count = 0
         skipped_count = 0
         for item in BASE_DIR.iterdir():
@@ -439,4 +443,6 @@ def rollback_version():
             except Exception as cleanup_error:
                 logger.error(f"Failed to clean up temporary directory after error: {cleanup_error}")
     finally:
+        if _ctx:
+            _ctx.restore_modules_config()
         _unlock_with_logging("rollback")
