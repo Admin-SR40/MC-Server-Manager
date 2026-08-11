@@ -122,6 +122,7 @@
     "core.update.modules_canceled": "模块更新已取消。",
     "core.update.languages_canceled": "语言包更新已取消。",
     "core.update.removed_from_list": " - {name}：不再出现在 update.json 中",
+    "core.update.languages_updated": "语言文件已更新。",
     "cmd.init": "初始化服务器配置",
     "cmd.init.auto": "使用智能默认值自动配置",
     "cmd.standardize": "将现有服务器迁移到受管结构",

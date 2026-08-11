@@ -378,6 +378,7 @@ DEFAULT_STRINGS = {
     "core.update.modules_canceled": "Module updates canceled.",
     "core.update.languages_canceled": "Language updates canceled.",
     "core.update.removed_from_list": " - {name}: no longer listed in update.json",
+    "core.update.languages_updated": "Language files updated.",
     # Module command descriptions
     "cmd.init": "Initialize new server configuration",
     "cmd.init.auto": "Automatic configuration with intelligent defaults",
@@ -2517,7 +2518,7 @@ def check_self_update(force=False):
     else:
         print(t("core.update.core_uptodate"))
     update_installed_modules(update_info, force=force)
-    update_language_files(update_info)
+    update_language_files(update_info, force=force)
     return True
 
 
@@ -3006,7 +3007,7 @@ def update_installed_modules(update_info, force=False):
     logger.info(f"Module update finished: {updated_count} updated, {len(updates) - updated_count} failed")
     print("")
 
-def update_language_files(update_info):
+def update_language_files(update_info, force=False):
     print(t("core.update.languages_check"))
     installed = get_installed_languages()
     remote = get_remote_languages(update_info)
@@ -3024,7 +3025,7 @@ def update_language_files(update_info):
                 local_version = json.load(f).get("version", "?")
         except Exception as e:
             logger.warning(f"Could not read language version for {code}: {e}")
-        if str(local_version) != str(info.get("version")):
+        if force or str(local_version) != str(info.get("version")):
             outdated.append((code, info, local_version))
     if not outdated:
         print(t("core.update.languages_uptodate") + "\n")
@@ -3037,9 +3038,11 @@ def update_language_files(update_info):
         print(t("core.update.languages_canceled") + "\n")
         return
     for code, info, _ in outdated:
+        print(t("core.lang.downloading", code=code))
         if download_language_file(code, info):
             if code == CURRENT_LANG:
                 load_language(code)
+    print(t("core.update.languages_updated"))
     print("")
 
 
