@@ -69,7 +69,9 @@ USER_AGENT = "MCSM/" + SCRIPT_VERSION
 BASE_DIR = Path(os.getcwd())
 CONFIG_FILE = BASE_DIR / "config" / "version.cfg"
 MODULES_CONFIG_FILE = BASE_DIR / "config" / "modules.cfg"
+SCRIPT_CONFIG_FILE = BASE_DIR / "config" / "script.cfg"
 BUNDLES_DIR = BASE_DIR / "bundles"
+LANG_DIR = BUNDLES_DIR / "lang"
 SCRIPT_NAME = Path(__file__).name
 SERVER_JAR = BASE_DIR / "core.jar"
 PLUGINS_DIR = BASE_DIR / "plugins"
@@ -82,6 +84,8 @@ LOG_FILE = LOG_DIR / "manager.log"
 UPDATE_URL = "https://raw.githubusercontent.com/Admin-SR40/MC-Server-Manager/refs/heads/main/update.json"
 MODULES_DIR = None
 MODULES_JSON = None
+CURRENT_LANG = "en"
+LANG_DATA = {}
 _lock_depth = 0
 _loaded_modules = {}
 BASE_EXCLUDE_LIST = [
@@ -106,16 +110,663 @@ BASE_EXCLUDE_LIST = [
     "worlds/*/session.lock"
 ]
 
+DEFAULT_STRINGS = {
+    # Core commands / help
+    "core.help.title": "Minecraft Server Management Tool (v{version})",
+    "core.help.desc": "A modular command-line tool for managing Minecraft server versions, backups, plugins and other configurations.",
+    "core.help.usage": "Usage:",
+    "core.help.core": "Core Commands:",
+    "core.help.start": "Start the server",
+    "core.help.install": "Install or update modules",
+    "core.help.info": "Show current server configuration",
+    "core.help.version": "Check for script, module and language updates",
+    "core.help.lang": "Show or change language",
+    "core.help.license": "Show the open source license",
+    "core.help.help": "Show this help message",
+    "core.help.installed": "Installed Module Commands:",
+    "core.help.no_modules": "No modules installed.",
+    "core.help.install_hint": 'Use "--install" to choose modules, or "--install all" to install everything.',
+    "core.help.not_installed": "Not Installed (available via --install):",
+    "core.help.tip_all": 'Tip: "--install all" installs all modules.',
+    "core.help.install_available": 'Run "--install" to view and install available modules.',
+    # First run / language
+    "core.lang.title": "LANGUAGE SELECTION",
+    "core.lang.choose": "Choose a language:",
+    "core.lang.english": "English (default)",
+    "core.lang.downloading": "Downloading language pack '{code}'...",
+    "core.lang.download_fail": "Could not download language pack '{code}': {error}",
+    "core.lang.set": "Language set to {display}.",
+    "core.lang.current": "Current language: {display} ({code})",
+    "core.lang.available": "Available languages:",
+    "core.lang.unknown": "Unknown language: {code}",
+    "core.lang.installed_files": "Language files in bundles/lang/:",
+    "core.first_run.title": "FIRST RUN - MODULE SETUP",
+    "core.first_run.desc1": "This is the first time the script has been used in this directory.",
+    "core.first_run.desc2": "No modules are installed yet, so most commands cannot be used.",
+    "core.first_run.desc3": "The core script only supports:",
+    "core.first_run.desc4": " - starting the server",
+    "core.first_run.desc5": " - --info / --license / --help / --version / --lang",
+    "core.first_run.desc6": " - installing modules (this flow)",
+    "core.first_run.desc7": "After installing modules you get: server initialization, version control, backups, plugins, worlds, crash analysis, players, settings and maintenance.",
+    "core.first_run.desc8": "Modules are downloaded from GitHub and verified with MD5 checks.",
+    "core.first_run.desc9": 'You can also run \'./start.sh --install all\' later to install everything.',
+    # Install flow
+    "core.install.canceled": "Installation canceled.",
+    "core.install.no_modules": "No modules installed. Run '--install' to set up modules.",
+    "core.install.choose_dir": "Choose where to store installed modules:",
+    "core.install.dir_shared": "~/.cache/MC-Server-Manager (shared across servers)",
+    "core.install.dir_server": "./bundles/modules (this server only)",
+    "core.install.dir_custom": "Custom path",
+    "core.install.dir_set": "Modules directory set to: {path}",
+    "core.install.available": "Available modules:",
+    "core.install.select_prompt": "Enter numbers (e.g. '1 2 3'), 'all' for everything, or Enter to cancel.",
+    "core.install.selection": "Your selection:",
+    "core.install.downloading": "Downloading module '{name}'...",
+    "core.install.installed": "Installed '{name}' (version {version}, {size} bytes, {speed:.2f} KB/s)",
+    "core.install.already": " - {name}: already installed (version {version})",
+    "core.install.all_already": "All selected modules are already installed.",
+    "core.install.skipped_deps": "Installation skipped: required dependencies were not confirmed.",
+    "core.install.nothing": "Nothing to install.",
+    "core.install.finished": "Module installation finished: {installed} installed, {skipped} skipped/failed",
+    "core.install.dep_ask": "Install required module '{dep}' too?",
+    "core.install.dep_skip": "Skipping '{name}' because required module '{dep}' was not installed.",
+    "core.install.dep_required": "Module '{name}' requires: {deps}",
+    "core.install.unknown": "Unknown module: {name}",
+    "core.install.fetch_fail": "Could not fetch module list: {error}",
+    "core.install.network_hint": "Please check your internet connection and try again.",
+    "core.install.dir_fail": "Could not create modules directory {path}",
+    # Module / command errors
+    "core.module.missing": "Module '{name}' is not installed.",
+    "core.module.install_hint": "Install it with: --install {name}",
+    "core.module.required_missing": "Required module '{name}' is not installed.",
+    "core.invalid_command": "Invalid command or arguments",
+    "core.invalid_use_help": "Use '{script} --help' for usage information",
+    "core.unexpected_error": "An unexpected error occurred: {error}",
+    "core.check_log": "Check the log file for more details: {log}",
+    "core.interrupted": "Script interrupted by user",
+    # Update check
+    "core.update.title": "Self Update Check",
+    "core.update.current": "Current script version: {version}",
+    "core.update.latest": "Latest version available: {version} (Released: {date})",
+    "core.update.core_uptodate": "Core script is up to date.",
+    "core.update.core_new": "New version {version} is available!",
+    "core.update.core_ask": "Do you want to download and update the core script? (y/N)",
+    "core.update.modules_check": "Checking installed modules...",
+    "core.update.modules_none": "No modules installed. Nothing to update.",
+    "core.update.modules_uptodate": "All installed modules are up to date.",
+    "core.update.modules_available": "Updates available for installed modules:",
+    "core.update.modules_ask": "Update these modules now? (y/N)",
+    "core.update.languages_check": "Checking language files...",
+    "core.update.languages_none": "No language files installed. Nothing to update.",
+    "core.update.languages_uptodate": "Language files are up to date.",
+    "core.update.languages_available": "Updates available for language files:",
+    "core.update.languages_ask": "Update language files now? (y/N)",
+    # Module command descriptions
+    "cmd.init": "Initialize new server configuration",
+    "cmd.init.auto": "Automatic configuration with intelligent defaults",
+    "cmd.standardize": "Migrate an existing server into the managed structure",
+    "cmd.get": "Fetch Purpur server info and download",
+    "cmd.list": "List all available versions",
+    "cmd.new": "Save current server and create a new one",
+    "cmd.change": "Switch to specified version",
+    "cmd.upgrade": "Upgrade server core to compatible version",
+    "cmd.delete": "Delete specified version from bundles",
+    "cmd.save": "Save current server as a named version",
+    "cmd.backup": "Create a timestamped backup",
+    "cmd.rollback": "Rollback to a previous backup",
+    "cmd.plugins": "Manage plugins with dependency awareness",
+    "cmd.plugins.analyze": "Analyze and display plugin dependency tree",
+    "cmd.worlds": "Manage worlds (delete, backup, import, seed)",
+    "cmd.players": "Manage banned players, IPs, and whitelist",
+    "cmd.settings": "Edit server properties and settings",
+    "cmd.cleanup": "Clean up server files to free up space",
+    "cmd.dump": "Create a compressed dump of log files",
+    "cmd.crash": "Crash detection and reports",
+    # Settings module
+    "settings.title": "Server Configuration Editor",
+    "settings.error_not_found": "Error: server.properties file not found!",
+    "settings.hint_start": "Please start the server at least once to generate the file.",
+    "settings.read_error": "Error reading server.properties: {error}",
+    "settings.table_title": "Server Configuration",
+    "settings.col_setting": "Settings",
+    "settings.col_value": "Value",
+    "settings.empty": "(empty)",
+    "settings.prompt_number": "Enter a number to edit settings (or press Enter to exit)",
+    "settings.your_choice": "Your choice:",
+    "settings.exiting": "Exiting configuration editor.",
+    "settings.invalid_selection": "Invalid selection. Please choose a valid number.",
+    "settings.editing": "Editing: {name}",
+    "settings.description": "Description: {description}",
+    "settings.current_value": "Current value: {value}",
+    "settings.options": "Options:",
+    "settings.enable": "Enable (true)",
+    "settings.disable": "Disable (false)",
+    "settings.select_option": "Select option (1/2):",
+    "settings.cancelled": "Cancelled editing.",
+    "settings.invalid_choice_12": "Invalid choice. Please enter 1 or 2.",
+    "settings.set_to": " - {name} set to: {value}",
+    "settings.valid_range": "Valid range: {min} - {max}",
+    "settings.enter_value": "Enter new value:",
+    "settings.value_out_of_range": "Value must be between {min} and {max}.",
+    "settings.enter_number": "Please enter a valid number.",
+    "settings.available_options": "Available options:",
+    "settings.select_option_prompt": "Select option:",
+    "settings.enter_new_value": "Enter new value:",
+    "settings.enter_number_between": "Please enter a number between 1 and {max}",
+    "settings.saved": "Configuration saved successfully!",
+    "settings.save_error": "Error saving configuration: {error}",
+    "settings.operation_cancelled": "Operation cancelled by user.",
+    "settings.unexpected": "Unexpected error: {error}",
+    "settings.simulation_also": " - simulation-distance also set to: {value}",
+    "settings.name.online-mode": "Online Mode",
+    "settings.name.white-list": "Whitelist",
+    "settings.name.enable-command-block": "Command Blocks",
+    "settings.name.allow-flight": "Allow Flight",
+    "settings.name.hardcore": "Hardcore Mode",
+    "settings.name.pvp": "PVP",
+    "settings.name.server-port": "Server Port",
+    "settings.name.op-permission-level": "OP Permission Level",
+    "settings.name.function-permission-level": "Function Permission Level",
+    "settings.name.max-players": "Max Players",
+    "settings.name.view-distance": "View Distance",
+    "settings.name.difficulty": "Difficulty",
+    "settings.name.level-seed": "World Seed",
+    "settings.name.motd": "MOTD",
+    "settings.desc.online-mode": "Verify player authentication with Mojang",
+    "settings.desc.white-list": "Enable whitelist to restrict server access",
+    "settings.desc.enable-command-block": "Enable command blocks in the world",
+    "settings.desc.allow-flight": "Allow players to fly in survival mode",
+    "settings.desc.hardcore": "Enable hardcore mode (permanent death)",
+    "settings.desc.pvp": "Allow player vs player combat",
+    "settings.desc.server-port": "The port the server will listen on",
+    "settings.desc.op-permission-level": "Permission level for server operators",
+    "settings.desc.function-permission-level": "Permission level for functions",
+    "settings.desc.max-players": "Maximum number of players allowed",
+    "settings.desc.view-distance": "Maximum view distance in chunks",
+    "settings.desc.difficulty": "Game difficulty level",
+    "settings.desc.level-seed": "Seed for world generation",
+    "settings.desc.motd": "Server description shown in server list",
+    # Players module
+    "players.title": "Player List Management",
+    "players.select_list": "Select list to manage:",
+    "players.opt_banned_players": "Banned Players (banned-players.json)",
+    "players.opt_banned_ips": "Banned IPs (banned-ips.json)",
+    "players.opt_whitelist": "Whitelist (whitelist.json)",
+    "players.choose_prompt": "Enter your choice (1-3) or press Enter to exit:",
+    "players.invalid_choice": "Invalid choice.",
+    "players.available_ops": "Available operations:",
+    "players.add_entry": "A - Add new entry",
+    "players.delete_entry": "D - Delete existing entry",
+    "players.op_prompt": "Enter operation (A/D) or press Enter to exit:",
+    "players.no_entries": "No entries to delete.",
+    "players.invalid_op": "Invalid operation.",
+    "players.enter_number": "Invalid input. Please enter a number.",
+    "players.empty_list": "{list} is empty. Nothing to delete.",
+    "players.deleting_from": "Deleting from {list}",
+    "players.delete_selection": "Enter the number(s) to delete (space-separated):",
+    "players.op_cancelled": "Operation cancelled.",
+    "players.no_valid_numbers": "No valid numbers selected.",
+    "players.will_delete": "The following entries will be deleted:",
+    "players.are_you_sure": "Are you sure? (y/N)",
+    "players.deletion_cancelled": "Deletion cancelled.",
+    "players.deleted_count": "Successfully deleted {count} entries from {list}!",
+    "players.enter_numbers": "Invalid input. Please enter numbers separated by spaces.",
+    "players.delete_error": "Error deleting from {list}: {error}",
+    "players.adding_to": "Adding to {list}",
+    "players.enter_ip": "Enter IP address to ban:",
+    "players.invalid_ip": "Invalid IP address format. Please try again.",
+    "players.ban_reason": "Enter ban reason (optional):",
+    "players.default_reason": "Banned by an operator.",
+    "players.offline_warning1": "WARNING: Server is in offline mode (online-mode=false).",
+    "players.offline_warning2": "UUIDs for offline players are generated locally and may differ from other servers.",
+    "players.offline_warning3": "This means the same username may have a different UUID on other servers.",
+    "players.offline_ask": "Do you want to continue using offline UUIDs? (y/N)",
+    "players.enter_username": "Enter player username:",
+    "players.username_too_long": "Username too long (max 16 characters). Please try again.",
+    "players.generated": "Generated: {name} -> {uuid}",
+    "players.fetching_uuid": "Fetching UUID for {name}",
+    "players.fetch_failed": "Error: Could not fetch UUID for '{name}'.",
+    "players.check_username": "Please check the username and try again.",
+    "players.found": "Found: {name} -> {uuid}",
+    "players.internal_error": "Internal error: could not obtain valid player information.",
+    "players.added_success": "Successfully added to {list}!",
+    "players.save_error": "Error saving {list}: {error}",
+    "players.table_banned_ips": "                          - Banned IPs -",
+    "players.table_banned_players": "                        - Banned Players -",
+    "players.table_whitelist": "                          - Whitelist -",
+    "players.table_banned_ips_empty": "                          - Banned IPs -\n╔═════════════════════════════════════════════════════════════╗\n║                                                             ║\n║                      No banned IPs found.                   ║\n║                                                             ║\n╚═════════════════════════════════════════════════════════════╝",
+    "players.table_banned_players_empty": "                        - Banned Players -\n╔════════════════════════════════════════════════════════════════╗\n║                                                                ║\n║                    No banned players found.                    ║\n║                                                                ║\n╚════════════════════════════════════════════════════════════════╝",
+    "players.table_whitelist_empty": "                          - Whitelist -    \n╔════════════════════════════════════════════════════════════════╗\n║                                                                ║\n║                 No whitelisted players found.                  ║\n║                                                                ║\n╚════════════════════════════════════════════════════════════════╝",
+    "players.col_ip": "IP Address",
+    "players.col_reason": "Reason",
+    "players.col_name": "Player Name",
+    "players.col_uuid": "UUID",
+    # Maintenance module
+    "maintenance.lock_error": "Error: Could not create task lock",
+    "maintenance.preparing": "Preparing to clean up server files",
+    "maintenance.nothing_clean": "No files to clean up found.",
+    "maintenance.will_delete": "The following files will be deleted:",
+    "maintenance.total_free": "Total space to free: {size} bytes (~{mb} MB)",
+    "maintenance.confirm_delete": "Are you sure you want to delete these files? (y/N)",
+    "maintenance.canceled": "Cleanup canceled.",
+    "maintenance.deleted": "Deleted: {path}",
+    "maintenance.delete_error": "Error deleting {path}: {error}",
+    "maintenance.completed": "Cleanup completed. Deleted {count} files, freed {size} bytes (~{mb} MB).",
+    "maintenance.no_logs": "No log files found to dump.",
+    "maintenance.search_title": "Log Search Utility",
+    "maintenance.searching_for": "Searching for: {terms} (case-insensitive)",
+    "maintenance.found_matches": "Found {count} matches in: {path}",
+    "maintenance.process_error": "Error processing {path}: {error}",
+    "maintenance.dumped_files": "Dumped {count} log files.",
+    "maintenance.found_lines": "Found {lines} matching lines in {files} files.",
+    "maintenance.result_saved": "Result saved to: {name}",
+    "maintenance.file_size": "File size: {size} bytes (~{mb} MB)",
+    "maintenance.delete_originals": "Do you want to delete the original log files? (y/N)",
+    "maintenance.deleted_logs": "Deleted {count} log files, freed {size} bytes.",
+    "maintenance.delete_log_error": "Error deleting {path}: {error}",
+    "maintenance.no_match": "No matching content found in any log files.",
+    "maintenance.dump_error": "Error creating log dump: {error}",
+    "maintenance.dump_title": "Log Dump Utility",
+    "maintenance.creating_dump": "Creating complete log dump",
+    # Backup module
+    "backup.usage_save": "Usage: --save <version>",
+    "backup.lock_error": "Error: Could not create task lock",
+    "backup.config_warning": "Warning: Could not load config, using default version 'unknown'",
+    "backup.saving_as": "Saving current version ({current}) as {version}",
+    "backup.saved": "Version {version} saved successfully to {path}",
+    "backup.error_saving": "Error saving version: {error}",
+    "backup.config_error": "Error: Could not load configuration to determine current version",
+    "backup.creating_backup": "Creating backup of current version ({version})",
+    "backup.backup_created": "Backup created successfully: {path}",
+    "backup.error_backup": "Error creating backup: {error}",
+    "backup.no_backups": "No backups found for version {version}",
+    "backup.no_backup_files": "No backup files found for version {version}",
+    "backup.available": "Available Backups:",
+    "backup.no_selection": "No selection made.",
+    "backup.invalid_selection": "Invalid selection.",
+    "backup.selected": "Selected file: {name}",
+    "backup.rolling": "Rolling back now, please wait",
+    "backup.bad_zip": "Error: The backup file appears to be corrupted or not a valid ZIP archive",
+    "backup.extract_error": "Error extracting backup file: {error}",
+    "backup.empty_backup": "Error: Failed to extract backup file or backup is empty",
+    "backup.rollback_success": "Server rollbacked successfully",
+    "backup.invalid_input": "Invalid input. Please enter a number.",
+    "backup.interrupted": "Rollback interrupted by user.",
+    "backup.rollback_error": "Error during rollback: {error}",
+    # Worlds module
+    "worlds.invalid_arg": "Invalid argument for --worlds: {mode}",
+    "worlds.invalid_arg_hint": "Available arguments: import, delete, backup",
+    "worlds.lock_error": "Error: Could not create task lock",
+    "worlds.title": "World Management Utility",
+    "worlds.read_error": "Error reading {name}: {error}",
+    "worlds.table_title": "Existing Worlds",
+    "worlds.col_worlds": "Worlds",
+    "worlds.col_size": "Size",
+    "worlds.col_status": "Status",
+    "worlds.all": "All",
+    "worlds.all_worlds": "All Worlds",
+    "worlds.no_worlds": "No worlds found.",
+    "worlds.none": "N/A",
+    "worlds.no_delete": "No world folders found. Nothing to delete.",
+    "worlds.no_backup": "No world folders found. Nothing to backup.",
+    "worlds.operations": "Available operations:",
+    "worlds.op_delete": "Delete worlds",
+    "worlds.op_backup": "Backup worlds",
+    "worlds.op_import": "Import worlds",
+    "worlds.op_seed": "Configure world seed",
+    "worlds.select_op": "Select operation (1-4):",
+    "worlds.no_op": "No operation selected. Operation canceled.",
+    "worlds.invalid_op": "Invalid operation selection.",
+    "worlds.cancelled": "Operation canceled by user.",
+    "worlds.op_error": "Error during world operation: {error}",
+    "worlds.no_selection": "No selection made. Operation canceled.",
+    "worlds.select_delete": "Select world folders to delete (space-separated numbers, 0 for all):",
+    "worlds.invalid_number": "Invalid number: {num}",
+    "worlds.invalid_input": "Invalid input: {value}",
+    "worlds.confirm_delete_all": "Are you sure you want to delete ALL world folders?\nThis cannot be undone!",
+    "worlds.confirm_delete": "Are you sure you want to delete these world(s)?\nThis cannot be undone!",
+    "worlds.deleted": "Deleted: {name}",
+    "worlds.delete_error": "Error deleting {name}: {error}",
+    "worlds.all_deleted": "All world folders deleted successfully.",
+    "worlds.deleted_count": "Deleted {count} worlds, freed {size}",
+    "worlds.selected_delete": "You have selected the following world(s) to delete:",
+    "worlds.deleted_selected": "Selected world(s) deleted successfully.",
+    "worlds.deleted_selected_count": "Deleted {count} worlds, freed {size}",
+    "worlds.after_delete_seed": "All world folders have been removed.\nDo you want to configure a new world seed now?",
+    "worlds.skip_seed": "Skipped seed configuration.",
+    "worlds.skip_seed_remain": "Some world folders remain. Skipping seed configuration.",
+    "worlds.config_error_backup": "Error: Could not determine current server version for backup.",
+    "worlds.select_backup": "Select world folders to backup (space-separated numbers, 0 for all):",
+    "worlds.selected_all": "You have selected ALL worlds to backup:",
+    "worlds.selected_list": "You have selected the following world(s) to backup:",
+    "worlds.confirm_backup": "Proceed with backup?",
+    "worlds.backup_path": "Creating backup: {path}",
+    "worlds.warn_missing": "Warning: World folder {name} does not exist, skipping.",
+    "worlds.adding": "Adding: {name}",
+    "worlds.backup_success": "Backup created successfully: {path}",
+    "worlds.file_size": "File size: {size}",
+    "worlds.worlds_backed": "Worlds backed up: {count}",
+    "worlds.backup_error": "Error creating backup: {error}",
+    "worlds.import_title": "World Import Utility",
+    "worlds.enter_zip": "Enter the path to the world backup ZIP file:",
+    "worlds.file_not_found": "Error: File not found: {path}",
+    "worlds.not_zip": "Error: File must be a ZIP archive.",
+    "worlds.reading": "Reading archive: {name}",
+    "worlds.no_valid_worlds": "Error: No valid worlds found in the archive.",
+    "worlds.valid_hint": "A valid world must contain a level.dat file.",
+    "worlds.found_worlds": "Found {count} world(s) in archive:",
+    "worlds.existing_warning": "Warning: The following worlds already exist:",
+    "worlds.replace_ask": "Replace existing worlds?",
+    "worlds.import_canceled": "Import canceled.",
+    "worlds.removed": "Removed existing world: {name}",
+    "worlds.remove_error": "Error removing {name}: {error}",
+    "worlds.extracting": "Extracting worlds.",
+    "worlds.imported": " - Imported: {name} ({size})",
+    "worlds.invalid_world": " - Invalid world (missing level.dat): {name}",
+    "worlds.import_success": "Successfully imported {count} world(s).",
+    "worlds.import_error": "Error importing world: {error}",
+    "worlds.seed_not_found": "Server properties file not found. Creating default...",
+    "worlds.seed_options": "To generate new worlds, there are 3 options for the seed:",
+    "worlds.keep_seed": "Keep the current seed",
+    "worlds.random_seed": "Use a random seed",
+    "worlds.custom_seed": "Set a custom seed",
+    "worlds.your_option": "Your option (1-3):",
+    "worlds.keeping": "Keeping current seed",
+    "worlds.random": "Using random seed",
+    "worlds.enter_seed": "Enter your seed:",
+    "worlds.seed_set": "Seed set to: {seed}",
+    "worlds.seed_empty": "Seed cannot be empty. Please try again.",
+    "worlds.seed_invalid": "Invalid option. Please choose 1, 2, or 3.",
+    "worlds.seed_cancelled": "Operation canceled.",
+    "worlds.seed_success": "Successfully configured world seed.",
+    "worlds.seed_future": "New worlds will be generated with the specified seed when server starts.",
+    "worlds.seed_error": "Error saving world seed configuration: {error}",
+    # Plugins module
+    "plugins.yaml_required": "Error: PyYAML is required by the plugins module.",
+    "plugins.yaml_install": "Please install it with: pip install PyYAML",
+    "plugins.dir_not_found": "Plugins directory not found",
+    "plugins.none_found": "No plugins found",
+    "plugins.table_title": "Plugins Management",
+    "plugins.col_name": "Plugins",
+    "plugins.col_version": "Version",
+    "plugins.col_status": "Status",
+    "plugins.enabled": "Enabled",
+    "plugins.disabled": "Disabled",
+    "plugins.toggle_ask": "Do you want to toggle these plugins?",
+    "plugins.toggle_numbers": "Enter the numbers of the plugin you want to toggle (e.g., '1 2 3'):",
+    "plugins.no_selection": "No plugins selected.",
+    "plugins.no_valid_numbers": "No valid plugin numbers selected.",
+    "plugins.enabled_one": "Enabled: {name}",
+    "plugins.enable_error": "Error enabling {name}: {error}",
+    "plugins.multiple_options": "You have multiple options:",
+    "plugins.opt_manual": "Disable the dependent plugins first, then disable this one",
+    "plugins.opt_force": "Force disable this plugin anyway (RISKY)",
+    "plugins.opt_auto": "Disable the whole plugin chain for me (AUTOMATIC)",
+    "plugins.disable_dependents_first": "Please disable the dependent plugins first:",
+    "plugins.then_retry": "Then try disabling this plugin again.",
+    "plugins.force_disabled": "Force disabled: {name}",
+    "plugins.force_error": "Error force disabling {name}: {error}",
+    "plugins.auto_disabled": "Automatically disabled the following plugins:",
+    "plugins.soft_not_auto": "Note: The following plugins have soft dependencies and were NOT automatically disabled:",
+    "plugins.may_lose": "These plugins may lose some functionality but should still work.",
+    "plugins.cancelled_disable": "Cancelled disabling: {name}",
+    "plugins.invalid_choice": "Invalid choice. Please enter 1, 2, 3, or C.",
+    "plugins.disabled_one": "Disabled: {name}",
+    "plugins.disable_error": "Error disabling {name}: {error}",
+    "plugins.skipped": "Skipped: {name}",
+    "plugins.states_changed": "Plugin states changed successfully",
+    "plugins.invalid_input": "Invalid input. Please enter numbers separated by spaces.",
+    "plugins.toggle_error": "Error toggling plugins: {error}",
+    "plugins.queued": "Queued for disabling (hard dependency): {name}",
+    "plugins.analyze_title": "Plugin Dependency Analysis",
+    "plugins.soft_missing": "Plugin '{name}' requires following soft dependencies but not installed:",
+    "plugins.soft_disabled": "Plugin '{name}' requires following soft dependencies but not enabled:",
+    "plugins.hard_missing": "Plugin '{name}' requires following hard dependencies but not installed:",
+    "plugins.hard_disabled": "Plugin '{name}' requires following hard dependencies but not enabled:",
+    "plugins.all_satisfied": "All plugin dependencies are satisfied!",
+    "plugins.no_issues": "No missing or disabled dependencies found.",
+    "plugins.disabled_list": "Currently Disabled Plugins:",
+    "plugins.ignore_soft": "You can ignore soft dependencies if not critical.",
+    "plugins.never_ignore_hard": "You should never ignore missing hard dependencies",
+    "plugins.statistics": "Statistics:",
+    "plugins.total": "Total plugins: {count}",
+    "plugins.enabled_count": "Enabled plugins: {count}",
+    "plugins.disabled_count": "Disabled plugins: {count}",
+    "plugins.hard_total": "Total hard dependencies: {count}",
+    "plugins.soft_total": "Total soft dependencies: {count}",
+    "plugins.dir_missing": "Plugins directory not found.",
+    "plugins.no_plugins_disable": "No plugins found to disable.",
+    "plugins.disable_error_file": "Error disabling {name}: {error}",
+    "plugins.disabled_count_result": "Successfully disabled {count} plugins.",
+    # Crash module
+    "crash.potential": "POTENTIAL CRASH DETECTED FROM LOGS",
+    "crash.detected": "CRASH DETECTED",
+    "crash.exit_code": "Exit Code: {code}",
+    "crash.uptime": "Server Uptime: {uptime}",
+    "crash.uptime_seconds": "Server Uptime: {uptime} (or {seconds} seconds)",
+    "crash.crash_time": "Crash Time: {time}",
+    "crash.log_file": "Log File: {path}",
+    "crash.report_file": "Report File: {path}",
+    "crash.potential_note": "Note: This is a potential crash detected from log analysis.",
+    "crash.potential_note2": "The server exited with code 0 but showed error indicators.",
+    "crash.check_report": "Please check the crash report for details about the server crash.",
+    "crash.completed": "Crash analysis completed in {time}s",
+    "crash.read_log_warning": "Warning: Could not read log file: {error}",
+    "crash.dep_error": "Error analyzing dependencies for {name}: {error}",
+    "crash.dep_analysis_error": "Error in plugin dependency analysis: {error}",
+    "crash.write_report_error": "Error writing crash report: {error}",
+    "crash.generate_report_error": "Error generating crash report: {error}",
+    "crash.read_log_error": "Error reading log file: {error}",
+    "crash.possible_title": "POSSIBLE CRASH DETECTED IN LOGS",
+    "crash.possible_warning1": "Warning: The server exited normally (return code 0),",
+    "crash.possible_warning2": "but potential crash/error indicators were found in the logs.",
+    "crash.could_indicate": "This could indicate:",
+    "crash.indicate_oom": " - Out of memory issues",
+    "crash.indicate_plugin": " - Plugin conflicts or errors",
+    "crash.indicate_world": " - World corruption",
+    "crash.indicate_other": " - Other runtime problems",
+    "crash.analyze_ask": "Do you want to analyze the logs for potential issues?",
+    "crash.analyze_yes": " Y - Yes, analyze the logs and generate a crash report",
+    "crash.analyze_no": " N - No, ignore the warnings and exit normally",
+    "crash.analyze_no_interrupt": " N - No, this was an intentional interrupt",
+    "crash.continuing": "Continuing without analysis",
+    "crash.enter_yn": "Please enter Y or N.",
+    "crash.interrupted_title": "SERVER INTERRUPTED - POTENTIAL ISSUES DETECTED",
+    "crash.interrupt_time": "Interrupt Time: {time}",
+    "crash.interrupt_warning1": "The server was interrupted by user (CTRL+C),",
+    "crash.interrupt_warning2": "but potential issues were detected in the logs.",
+    "crash.indicate_hang": " - Server was unresponsive and required force quit",
+    "crash.indicate_memory": " - Memory issues causing server to hang",
+    "crash.indicate_shutdown": " - Plugin conflicts preventing normal shutdown",
+    "crash.indicate_world_load": " - World corruption or loading problems",
+    # Init module
+    "init.title": "Minecraft Server Initialization",
+    "init.title_auto": "Automatic Server Initialization",
+    "init.standardize_title": "Server Structure Standardizer",
+    "init.config_exists": "Configuration file already exists!",
+    "init.config_will_replace": "This will replace your current configuration.",
+    "init.config_preserved": "Operation canceled. Existing configuration preserved.",
+    "init.checking_cores": "Checking for server core files",
+    "init.core_exists": "core.jar already exists. Skipping core detection.",
+    "init.no_jars": "No JAR files found in current directory.",
+    "init.found_core": "Found valid server core: {name} (Version: {version})",
+    "init.skipping_core": "Skipping {name}: Not a valid server core ({error})",
+    "init.core_error": "Error checking {name}: {error}",
+    "init.no_valid_cores": "No valid server cores found in JAR files.",
+    "init.using_only_core": "Using the only valid server core: {name}",
+    "init.copied_core": "Copied {name} to core.jar",
+    "init.auto_selected": "Auto-selected highest version: {name} (Version: {version})",
+    "init.auto_select_error": "Error: Could not auto-select a server core.",
+    "init.multiple_cores": "Detected multiple server cores in current directory:",
+    "init.selected_newest": "Selected newest version: {name} (Version: {version})",
+    "init.newest_error": "Error: Could not determine newest version.",
+    "init.selected_core": "Selected: {name} (Version: {version})",
+    "init.enter_number_between": "Please enter a number between 1 and {max}",
+    "init.valid_number_blank": "Please enter a valid number or leave blank for newest.",
+    "init.select_core_error": "Error selecting server core: {error}",
+    "init.select_failed": "Failed to select server core. Please check your JAR files.",
+    "init.no_valid_core_manual": "No valid server cores found.",
+    "init.jar_hint": "Please make sure you have server JAR files in the current directory.",
+    "init.auto_jar_hint": "The JAR files should contain a version.json file to be recognized as server cores.",
+    "init.using_version": "Using version: {version}",
+    "init.detected_version": "Detected server version: {version}",
+    "init.invalid_version": "Invalid version format. Use format like 1.21.5 or 1.21",
+    "init.converted_gb": "Converted {gb} GB to {mb} MB",
+    "init.low_ram_warning": "Warning: Allocating less than 512MB may cause server instability!",
+    "init.invalid_ram": "Invalid RAM size. Must be a positive integer",
+    "init.allocated_ram": "Allocated RAM: {mb} MB ({gb:.1f} GB)",
+    "init.additional_exclude": "You can add additional files/directories to exclude from backups.",
+    "init.exclude_hint": "These will be added to the base exclusion list.",
+    "init.no_java": "Error: No Java installations found! Please install Java first.",
+    "init.no_path": "No path entered. Please try again.",
+    "init.validating_java": "Validating Java",
+    "init.validated": "Validated successfully.",
+    "init.invalid_java": "Invalid Java path or Java not found. Please check the path and try again.",
+    "init.java_hint2": "Make sure the path points to a valid Java installation.",
+    "init.invalid_selection": "Invalid selection.",
+    "init.enter_number": "Please enter a number.",
+    "init.additional_params": "You can add additional server parameters (e.g., -nogui, --force-upgrade, etc.)",
+    "init.params_hint": "These will be appended after the default parameters.",
+    "init.config_saved": "Configuration saved to {path}",
+    "init.save_error": "Error saving configuration: {error}",
+    "init.auto_overwrite": "Configuration file already exists. Overwriting",
+    "init.auto_select_failed": "Failed to auto-select server core.",
+    "init.using_detected": "Using detected version from core.jar: {version}",
+    "init.cannot_detect": "Could not detect version from core.jar, using: {version}",
+    "init.required_java": "Required Java version: {java}",
+    "init.no_java_auto": "No Java installations found",
+    "init.invalid_path_auto": "Invalid path. Try again.",
+    "init.exiting_auto": "Exiting auto initialization.",
+    "init.no_suitable_java": "No suitable Java version found up to Java {version}.",
+    "init.detecting_memory": "Detecting available memory",
+    "init.running_container": " - Running in container environment",
+    "init.total_memory": "Total available memory: {mb:.0f} MB ({gb:.1f} GB)",
+    "init.low_memory_error": "ERROR: Available memory is less than 512MB.",
+    "init.low_memory_hint": "The server will likely crash due to insufficient memory.",
+    "init.manual_init_hint": "Please use manual initialization (--init) to allocate memory carefully.",
+    "init.base_allocation": "Base allocation: {mb} MB",
+    "init.analyzing_plugins": "Analyzing {count} enabled plugins:",
+    "init.plugins_allocation": "Total plugins allocation: {mb} MB",
+    "init.player_details": "Player allocation details:",
+    "init.estimated_players": " - Estimated players: {count}",
+    "init.view_distance": " - View distance: {distance}",
+    "init.multiplier": " - Multiplier: {multiplier}",
+    "init.players_allocation": " - Total allocation: {mb:.1f} MB",
+    "init.breakdown": "Memory allocation breakdown:",
+    "init.base": " - Base: {mb} MB",
+    "init.plugins": " - Plugins: {mb} MB",
+    "init.players": " - Players: {mb:.1f} MB",
+    "init.total": " - Total: {mb:.1f} MB",
+    "init.final_ram": "Final allocated RAM: {mb} MB ({gb:.1f} GB)",
+    "init.auto_saved": "Auto configuration saved to {path}",
+    "init.auto_completed": "Auto initialization completed in {time}s",
+    "init.lock_busy": "Error: Another task is currently running.",
+    "init.standardize_desc1": "This action will standardize your server files to make it managable by the manager.",
+    "init.standardize_desc2": "You should backup your files before this action, the standardizer is only designed for normal Minecraft server file structure.",
+    "init.standardize_cancelled": "Operation cancelled.",
+    "init.moving_config": "Moving config files",
+    "init.moved": " - Moved {name}",
+    "init.move_failed": " - Failed to move {name}: {error}",
+    "init.no_config_moved": " - No config files needed moving",
+    "init.moving_worlds": "Moving worlds",
+    "init.moved_world": " - Moved {name}",
+    "init.move_world_failed": " - Failed to move {name}: {error}",
+    "init.no_worlds_found": " - No worlds found",
+    "init.created_bundles": "Created bundles directory",
+    "init.detecting_cores": "Detecting cores",
+    "init.no_jar_files": "No .jar files found.",
+    # Version module
+    "version.lock_error": "Error: Could not create task lock",
+    "version.new_title": "New Server Creation",
+    "version.no_versions": "No server versions found in bundles directory.",
+    "version.download_hint": "Please download a version first using: --get <version>",
+    "version.available_versions": "Available Versions:",
+    "version.no_selection": "No selection made.",
+    "version.invalid_selection": "Invalid selection.",
+    "version.selected_version": "Selected version: {version}",
+    "version.save_state": "Saving current server state",
+    "version.backup_module_missing": "Cannot create a new server without the backup module.",
+    "version.enter_number": "Invalid input. Please enter a number.",
+    "version.extracted_core": "Extracted core for version {version}",
+    "version.extract_error": "Error extracting core: {error}",
+    "version.init_options": "Initialization options:",
+    "version.init_manual": "Enter --init",
+    "version.init_auto": "Enter --init auto",
+    "version.init_exit": "Exit without initialization",
+    "version.running_manual": "Running manual initialization",
+    "version.running_auto": "Running auto initialization",
+    "version.not_initialized": "Server created but not initialized.",
+    "version.init_hint": "Please run --init or --init auto to configure the server.",
+    "version.invalid_init_choice": "Invalid input. Choose 1, 2, or 3.",
+    "version.cancelled": "Operation cancelled by user.",
+    "version.create_error": "Error during new server creation: {error}",
+    "version.no_local_version": "No local version found to check for updates.",
+    "version.cannot_determine_build": "Could not determine local build number.",
+    "version.no_successful_builds": "No successful builds found for this version.",
+    "version.local_latest": "Local build: {local}, Latest build: {latest}",
+    "version.update_available": "Update available",
+    "version.no_updates": "No updates found",
+    "version.no_core_zip": "No core.zip found for version {version}",
+    "version.build_info": "Build Information:",
+    "version.author": "Author: {author}",
+    "version.date": "Date: {date}",
+    "version.md5": "MD5: {md5}",
+    "version.description": "Description:",
+    "version.download_confirm": "Do you want to download this version?",
+    "version.download_canceled": "Download canceled.",
+    "version.download_started": "Downloading from {url}",
+    "version.download_speed_hint": "This may take a while depending on your network speed.",
+    "version.ctrl_c_hint": "Press CTRL+C to cancel the download.",
+    "version.download_completed": "Download completed in {time} seconds",
+    "version.download_speed": "Download speed: {speed:.2f} KB/s",
+    "version.verifying": "Verifying file integrity",
+    "version.md5_failed": "MD5 verification failed",
+    "version.md5_expected": "Expected: {md5}",
+    "version.md5_got": "Got: {md5}",
+    "version.corrupted": "The downloaded file may be corrupted.",
+    "version.deleted_security": "The file will be deleted due to security reasons.",
+    "version.md5_ok": "MD5 verified successfully!",
+    "version.no_md5_warning": "Warning: No MD5 hash provided for verification.",
+    "version.downloaded": "Successfully downloaded {version} (build {build}) to {path}",
+    "version.download_error": "Error during download: {error}",
+    "version.version_not_found": "Version {version} not found on PurpurMC",
+    "version.http_error": "HTTP Error: {code} - {reason}",
+    "version.url_error": "URL Error: {reason}",
+    "version.timeout": "Timeout while fetching version {version}",
+    "version.download_version_error": "Error downloading version {version}: {error}",
+    "version.no_versions_installed": "No versions available in bundles directory",
+    "version.exclusion_list": "Exclusion List:",
+    "version.usage_delete": "Usage: --delete <version>",
+    "version.version_not_exist": "Version {version} does not exist",
+    "version.deletion_canceled": "Deletion canceled",
+    "version.deleting_version": "Deleting version {version}",
+    "version.deleted_version": "Version {version} deleted successfully",
+    "version.delete_error": "Error deleting version: {error}",
+    "version.usage_change": "Usage: --change <version>",
+    "version.config_not_found": "Configuration file not found! Run with --init first.",
+    "version.saving_current": "Saving current version {version}",
+    "version.target_not_found": "Version {version} not found",
+    "version.switching": "Switching to version {version}",
+    "version.switch_error": "Error switching version: {error}",
+    "version.upgrade_title": "Server Core Upgrade",
+    "version.current_version": "Current server version: {version}",
+    "version.backup_ask": "Do you want to create a backup before upgrading?",
+    "version.creating_backup": "Creating backup",
+    "version.no_versions_upgrade": "No versions found in bundles directory",
+    "version.select_version": "Select a version to upgrade to (number):",
+    "version.upgrade_confirm": "Are you sure you want to upgrade from {current} to {selected}?",
+    "version.upgrading_core": "Upgrading server core",
+    "version.backed_up_core": "Backed up current core.jar",
+    "version.core_upgraded": "Core upgraded successfully.",
+    "version.config_updated": "Updated configuration to version {version}",
+    "version.upgrade_completed": "Server upgrade completed successfully",
+    "version.plugins_review": "Please review your plugin compatibility before starting the server.",
+    "version.upgrade_interrupted": "Upgrade interrupted by user.",
+    "version.upgrade_error": "Error during upgrade process: {error}",
+}
+
 
 # ── Utility functions ──────────────────────────────────────────────
-
-
-def print_banner(title, width=50):
-    """Print a centered banner with '=' separators."""
-    print()
-    print("=" * width)
-    print(title.center(width))
-    print("=" * width)
 
 
 def confirm_action(prompt, default_no=True):
@@ -132,15 +783,251 @@ def confirm_action(prompt, default_no=True):
         print("Please enter Y or N.")
 
 
-def log_and_print(msg, level="info"):
-    """Log a message and print it to console."""
-    if level == "error":
-        logger.error(msg)
-    elif level == "warning":
-        logger.warning(msg)
+def truncate_text(text, max_length):
+    text = str(text)
+    if len(text) > max_length:
+        return text[:max_length - 3] + "..."
+    return text
+
+
+def get_script_config():
+    cfg = configparser.ConfigParser()
+    if SCRIPT_CONFIG_FILE.exists():
+        try:
+            cfg.read(SCRIPT_CONFIG_FILE, encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"Could not read script config: {e}")
+    return cfg
+
+def save_script_config(cfg):
+    SCRIPT_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(SCRIPT_CONFIG_FILE, "w", encoding="utf-8") as f:
+        cfg.write(f)
+
+def ensure_script_config():
+    """Migrate the legacy config/modules.cfg into config/script.cfg if needed."""
+    if SCRIPT_CONFIG_FILE.exists():
+        return
+    if not MODULES_CONFIG_FILE.exists():
+        return
+    try:
+        old = configparser.ConfigParser()
+        old.read(MODULES_CONFIG_FILE, encoding="utf-8")
+        modules_dir = ""
+        if old.has_section("MODULES") and old.has_option("MODULES", "dir"):
+            modules_dir = old.get("MODULES", "dir").strip()
+        if modules_dir:
+            cfg = configparser.ConfigParser()
+            cfg.add_section("script")
+            cfg.set("script", "language", "en")
+            cfg.add_section("modules")
+            cfg.set("modules", "dir", modules_dir)
+            save_script_config(cfg)
+            logger.info(f"Migrated modules config into {SCRIPT_CONFIG_FILE}")
+    except Exception as e:
+        logger.warning(f"Could not migrate modules config: {e}")
+
+def get_script_language():
+    cfg = get_script_config()
+    if cfg.has_option("script", "language"):
+        return cfg.get("script", "language").strip() or "en"
+    return "en"
+
+def set_script_language(code):
+    cfg = get_script_config()
+    if not cfg.has_section("script"):
+        cfg.add_section("script")
+    cfg.set("script", "language", code)
+    save_script_config(cfg)
+    logger.info(f"Script language set to: {code}")
+
+def load_language(code):
+    global CURRENT_LANG, LANG_DATA
+    CURRENT_LANG = "en"
+    LANG_DATA = {}
+    if code and code != "en":
+        path = LANG_DIR / f"{code}.json"
+        if path.exists():
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                strings = data.get("strings", {})
+                if isinstance(strings, dict):
+                    LANG_DATA = strings
+                    CURRENT_LANG = code
+                    logger.info(f"Loaded language pack: {code}")
+                else:
+                    logger.warning(f"Invalid language pack (missing strings): {path}")
+            except Exception as e:
+                logger.warning(f"Could not load language pack {path}: {e}")
+        else:
+            logger.warning(f"Language pack not found: {path}")
     else:
-        logger.info(msg)
-    print(msg)
+        logger.info("Using default language: en")
+
+def t(key, **kwargs):
+    """Translate a UI string; falls back to English, then to the key itself."""
+    text = LANG_DATA.get(key)
+    if text is None:
+        text = DEFAULT_STRINGS.get(key, key)
+    if kwargs:
+        try:
+            return text.format(**kwargs)
+        except (KeyError, IndexError, ValueError):
+            return text
+    return text
+
+def get_installed_languages():
+    langs = [{"code": "en", "display": "English"}]
+    if LANG_DIR.exists():
+        for path in sorted(LANG_DIR.glob("*.json")):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                langs.append({
+                    "code": data.get("lang", path.stem),
+                    "display": data.get("display", path.stem),
+                    "path": path,
+                })
+            except Exception as e:
+                logger.warning(f"Invalid language file {path}: {e}")
+    return langs
+
+def get_remote_languages(update_info=None):
+    if update_info is None:
+        try:
+            update_info = get_update_info()
+        except Exception:
+            return {}
+    if isinstance(update_info, dict):
+        languages = update_info.get("languages", {})
+        return languages if isinstance(languages, dict) else {}
+    return {}
+
+def download_language_file(code, info):
+    url = info.get("url")
+    expected_md5 = info.get("md5")
+    if not url:
+        logger.error(f"No download URL for language pack: {code}")
+        return False
+    try:
+        LANG_DIR.mkdir(parents=True, exist_ok=True)
+        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(request, timeout=30) as response:
+            content = response.read()
+        actual_md5 = hashlib.md5(content).hexdigest()
+        if expected_md5 and actual_md5 != expected_md5:
+            logger.error(f"MD5 verification failed for language pack {code} (expected: {expected_md5}, got: {actual_md5})")
+            print(t("core.lang.download_fail", code=code, error="MD5 verification failed"))
+            return False
+        data = json.loads(content.decode("utf-8"))
+        if not isinstance(data.get("strings", {}), dict):
+            raise ValueError("language file has no strings map")
+        path = LANG_DIR / f"{code}.json"
+        path.write_bytes(content)
+        logger.info(f"Language pack downloaded: {code} (version {info.get('version', 'unknown')})")
+        return True
+    except Exception as e:
+        logger.error(f"Error downloading language pack {code}: {e}")
+        print(t("core.lang.download_fail", code=code, error=e))
+        return False
+
+def run_language_selection():
+    print("\n" + "=" * 52)
+    print(t("core.lang.title").center(52))
+    print("=" * 52)
+    print()
+    remote = get_remote_languages()
+    installed = get_installed_languages()
+    options = [{"code": "en", "display": t("core.lang.english")}]
+    for code, info in sorted(remote.items()):
+        if code != "en" and not any(x["code"] == code for x in options):
+            options.append({"code": code, "display": info.get("display", code), "remote": True})
+    for item in installed:
+        if item["code"] != "en" and not any(x["code"] == item["code"] for x in options):
+            options.append(item)
+    print(t("core.lang.choose"))
+    for i, option in enumerate(options, 1):
+        print(f" {i}. {option['display']} ({option['code']})")
+    print()
+    while True:
+        choice = input("> ").strip().lower()
+        if not choice:
+            choice = "1"
+        if choice.isdigit() and 1 <= int(choice) <= len(options):
+            selected = options[int(choice) - 1]
+            break
+        matches = [option for option in options if option["code"] == choice]
+        if matches:
+            selected = matches[0]
+            break
+        print("Invalid choice. Please try again.")
+    code = selected["code"]
+    if code != "en":
+        local = any(item["code"] == code and "path" in item for item in installed)
+        if not local:
+            info = remote.get(code)
+            if not info:
+                print(t("core.lang.download_fail", code=code, error="language pack is not available"))
+                return "en"
+            print(t("core.lang.downloading", code=code))
+            if not download_language_file(code, info):
+                print(t("core.lang.download_fail", code=code, error="download failed"))
+                return "en"
+    set_script_language(code)
+    load_language(code)
+    print(t("core.lang.set", display=selected["display"]))
+    return code
+
+def cmd_lang(args):
+    if len(args) > 1:
+        code = args[1]
+        installed = get_installed_languages()
+        local = next((item for item in installed if item["code"].lower() == code.lower()), None)
+        if local:
+            code = local["code"]
+        remote = get_remote_languages()
+        info = remote.get(code)
+        if not local and not info:
+            for remote_code, remote_info in remote.items():
+                if remote_code.lower() == code.lower():
+                    code = remote_code
+                    info = remote_info
+                    break
+        if code == "en":
+            set_script_language("en")
+            load_language("en")
+            print(t("core.lang.set", display="English"))
+            return
+        if not local and not info:
+            print(t("core.lang.unknown", code=code))
+            return
+        if not local:
+            print(t("core.lang.downloading", code=code))
+            if not download_language_file(code, info):
+                return
+            installed = get_installed_languages()
+            local = next((item for item in installed if item["code"] == code), None)
+        set_script_language(code)
+        load_language(code)
+        display = local["display"] if local else info.get("display", code)
+        print(t("core.lang.set", display=display))
+        return
+    installed = get_installed_languages()
+    current_display = "English"
+    if CURRENT_LANG != "en":
+        current = next((item for item in installed if item["code"] == CURRENT_LANG), None)
+        if current:
+            current_display = current["display"]
+    print(t("core.lang.current", display=current_display, code=CURRENT_LANG))
+    print(t("core.lang.available"))
+    for item in installed:
+        marker = " *" if item["code"] == CURRENT_LANG else ""
+        print(f" - {item['display']} ({item['code']}){marker}")
+    remote = get_remote_languages()
+    for code, info in sorted(remote.items()):
+        if not any(item["code"] == code for item in installed):
+            print(f" - {info.get('display', code)} ({code})")
 
 
 def safe_rmtree(path):
@@ -834,33 +1721,33 @@ def get_exclude_list():
             logger.warning(f"Could not read additional exclusions from config: {e}")
     return exclude_list
 
-def preserve_modules_config():
-    """Back up config/modules.cfg before destructive server operations."""
-    if not MODULES_CONFIG_FILE.exists():
+def preserve_script_config():
+    """Back up config/script.cfg before destructive server operations."""
+    if not SCRIPT_CONFIG_FILE.exists():
         return False
     try:
         backup_dir = BUNDLES_DIR / ".meta"
         backup_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(MODULES_CONFIG_FILE, backup_dir / "modules.cfg")
-        logger.info(f"Modules config preserved: {MODULES_CONFIG_FILE}")
+        shutil.copy2(SCRIPT_CONFIG_FILE, backup_dir / "script.cfg")
+        logger.info(f"Script config preserved: {SCRIPT_CONFIG_FILE}")
         return True
     except Exception as e:
-        logger.warning(f"Could not preserve modules config: {e}")
+        logger.warning(f"Could not preserve script config: {e}")
         return False
 
-def restore_modules_config():
-    """Restore config/modules.cfg after destructive server operations."""
-    backup = BUNDLES_DIR / ".meta" / "modules.cfg"
+def restore_script_config():
+    """Restore config/script.cfg after destructive server operations."""
+    backup = BUNDLES_DIR / ".meta" / "script.cfg"
     if not backup.exists():
         return False
     try:
-        MODULES_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(backup, MODULES_CONFIG_FILE)
+        SCRIPT_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(backup, SCRIPT_CONFIG_FILE)
         backup.unlink()
-        logger.info(f"Modules config restored: {MODULES_CONFIG_FILE}")
+        logger.info(f"Script config restored: {SCRIPT_CONFIG_FILE}")
         return True
     except Exception as e:
-        logger.warning(f"Could not restore modules config: {e}")
+        logger.warning(f"Could not restore script config: {e}")
         return False
 
 
@@ -1254,9 +2141,9 @@ def compare_script_versions(current, latest):
 def check_self_update(force=False):
     logger.info(f"Starting self update check (force mode: {force})")
     print("\n" + "=" * 50)
-    print("                Self Update Check")
+    print(t("core.update.title").center(50))
     print("=" * 50)
-    print(f"\nCurrent script version: {SCRIPT_VERSION}")
+    print("\n" + t("core.update.current", version=SCRIPT_VERSION))
     try:
         update_info = get_update_info()
     except Exception as e:
@@ -1265,16 +2152,16 @@ def check_self_update(force=False):
         return False
     latest_version = update_info.get("latest_version", "Unknown")
     release_date = update_info.get("date", "Unknown")
-    print(f"Latest version available: {latest_version} (Released: {release_date})")
+    print(t("core.update.latest", version=latest_version, date=release_date))
     core_update = force or (
         latest_version != "Unknown" and compare_script_versions(SCRIPT_VERSION, latest_version) < 0
     )
     if core_update:
         if not force:
-            print(f"\nNew version {latest_version} is available!")
+            print("\n" + t("core.update.core_new", version=latest_version))
         else:
             print("\nForce mode: core update check bypassed.")
-        confirm = input("Do you want to download and update the core script? (y/N): ").strip().upper() or "N"
+        confirm = input(t("core.update.core_ask") + " ").strip().upper() or "N"
         if confirm == "Y":
             logger.info("User confirmed core update")
             download_latest_version()
@@ -1282,8 +2169,9 @@ def check_self_update(force=False):
             logger.info("User canceled core update")
             print("Core update canceled.\n")
     else:
-        print("Core script is up to date.")
+        print(t("core.update.core_uptodate"))
     update_installed_modules(update_info, force=force)
+    update_language_files(update_info)
     return True
 
 
@@ -1395,34 +2283,32 @@ def get_modules_dir():
     env_dir = os.environ.get("MCSM_MODULES_DIR")
     if env_dir:
         return Path(env_dir).expanduser().resolve()
+    cfg = get_script_config()
+    if cfg.has_option("modules", "dir"):
+        value = cfg.get("modules", "dir").strip()
+        if value:
+            return Path(value).expanduser().resolve()
     if MODULES_CONFIG_FILE.exists():
         try:
-            cfg = configparser.ConfigParser()
-            cfg.read(MODULES_CONFIG_FILE, encoding="utf-8")
-            if cfg.has_option("MODULES", "dir"):
-                value = cfg.get("MODULES", "dir").strip()
+            old = configparser.ConfigParser()
+            old.read(MODULES_CONFIG_FILE, encoding="utf-8")
+            if old.has_option("MODULES", "dir"):
+                value = old.get("MODULES", "dir").strip()
                 if value:
                     return Path(value).expanduser().resolve()
         except Exception as e:
-            logger.warning(f"Could not read modules config: {e}")
+            logger.warning(f"Could not read legacy modules config: {e}")
     return None
 
 
 def set_modules_dir(path):
-    MODULES_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    cfg = configparser.ConfigParser()
-    if MODULES_CONFIG_FILE.exists():
-        try:
-            cfg.read(MODULES_CONFIG_FILE, encoding="utf-8")
-        except Exception:
-            pass
-    if not cfg.has_section("MODULES"):
-        cfg.add_section("MODULES")
-    cfg.set("MODULES", "dir", str(path))
-    with open(MODULES_CONFIG_FILE, "w", encoding="utf-8") as f:
-        cfg.write(f)
+    cfg = get_script_config()
+    if not cfg.has_section("modules"):
+        cfg.add_section("modules")
+    cfg.set("modules", "dir", str(path))
+    save_script_config(cfg)
     logger.info(f"Modules directory configured: {path}")
-    print(f"Modules directory set to: {path}")
+    print(t("core.install.dir_set", path=path))
 
 
 def resolve_modules_dir():
@@ -1433,10 +2319,10 @@ def resolve_modules_dir():
 
 def choose_modules_dir():
     logger.info("Choosing modules directory")
-    print("\nChoose where to store installed modules:")
-    print(" 1. ~/.cache/MC-Server-Manager (shared across servers)")
-    print(" 2. ./bundles/modules (this server only)")
-    print(" 3. Custom path")
+    print("\n" + t("core.install.choose_dir"))
+    print(f" 1. {t('core.install.dir_shared')}")
+    print(f" 2. {t('core.install.dir_server')}")
+    print(f" 3. {t('core.install.dir_custom')}")
     try:
         while True:
             choice = input("\nYour choice (1-3): ").strip()
@@ -1523,7 +2409,7 @@ def download_module(name, info):
         print(f"Error: Could not create temporary directory {temp_dir}: {e}\n")
         return False
     temp_file = temp_dir / f"{name}.py"
-    print(f"\nDownloading module '{name}'...")
+    print("\n" + t("core.install.downloading", name=name))
     try:
         request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
         start_time = time.time()
@@ -1547,7 +2433,7 @@ def download_module(name, info):
         temp_file.write_bytes(content)
         os.replace(temp_file, MODULES_DIR / f"{name}.py")
         download_speed = len(content) / elapsed_time / 1024 if elapsed_time > 0 else 0
-        print(f"Installed '{name}' (version {info.get('version', 'unknown')}, {len(content)} bytes, {download_speed:.2f} KB/s)")
+        print(t("core.install.installed", name=name, version=info.get('version', 'unknown'), size=len(content), speed=download_speed))
         logger.info(f"Module {name} installed successfully (version {info.get('version', 'unknown')})")
         return True
     except urllib.error.URLError as e:
@@ -1579,15 +2465,15 @@ def install_modules_from_info(update_info, names, interactive=True):
             return True
         info = modules.get(name)
         if not info:
-            print(f"Unknown module: {name}")
+            print(t("core.install.unknown", name=name))
             skipped.add(name)
             return False
         missing_deps = [dep for dep in info.get("requires", []) if dep not in installed and dep not in to_install]
         if missing_deps:
-            print(f"\nModule '{name}' requires: {', '.join(missing_deps)}")
+            print("\n" + t("core.install.dep_required", name=name, deps=", ".join(missing_deps)))
             for dep in missing_deps:
-                if interactive and not confirm_action(f"Install required module '{dep}' too?", default_no=True):
-                    print(f"Skipping '{name}' because required module '{dep}' was not installed.\n")
+                if interactive and not confirm_action(t("core.install.dep_ask", dep=dep), default_no=True):
+                    print(t("core.install.dep_skip", name=name, dep=dep) + "\n")
                     skipped.add(name)
                     return False
                 if not resolve(dep):
@@ -1599,11 +2485,11 @@ def install_modules_from_info(update_info, names, interactive=True):
     if not to_install:
         logger.info("No modules to install (all requested modules already installed)")
         if skipped:
-            print("Installation skipped: required dependencies were not confirmed.\n")
+            print(t("core.install.skipped_deps") + "\n")
         elif names:
-            print("All selected modules are already installed.\n")
+            print(t("core.install.all_already") + "\n")
         else:
-            print("Nothing to install.\n")
+            print(t("core.install.nothing") + "\n")
         return False
     ok = False
     installed_count = 0
@@ -1611,7 +2497,7 @@ def install_modules_from_info(update_info, names, interactive=True):
         info = modules[name]
         current = registry.get(name)
         if isinstance(current, dict) and current.get("version") == info.get("version") and current.get("md5") == info.get("md5"):
-            print(f" - {name}: already installed (version {info.get('version')})")
+            print(t("core.install.already", name=name, version=info.get('version')))
             ok = True
             continue
         if download_module(name, info):
@@ -1631,15 +2517,15 @@ def install_modules_from_info(update_info, names, interactive=True):
 
 def select_modules_interactive(modules):
     names = sorted(modules.keys())
-    print("\nAvailable modules:")
+    print("\n" + t("core.install.available"))
     print("=" * 52)
     for i, name in enumerate(names, 1):
         info = modules[name]
         requires = f" (requires: {', '.join(info.get('requires', []))})" if info.get("requires") else ""
         print(f"{i:2d}. {name:<12} - {info.get('description', '')}{requires}")
     print("=" * 52)
-    print("Enter numbers (e.g. '1 2 3'), 'all' for everything, or Enter to cancel.")
-    choice = input("\nYour selection: ").strip().lower()
+    print(t("core.install.select_prompt"))
+    choice = input("\n" + t("core.install.selection") + " ").strip().lower()
     if not choice:
         return []
     if choice == "all":
@@ -1664,23 +2550,21 @@ def run_install_flow(args=None, first_run=False):
         if first_run:
             print()
             print("=" * 60)
-            print("               FIRST RUN - MODULE SETUP")
+            print(t("core.first_run.title").center(60))
             print("=" * 60)
             print()
-            print("This is the first time the script has been used in this directory.")
-            print("No modules are installed yet, so most commands cannot be used.")
+            print(t("core.first_run.desc1"))
+            print(t("core.first_run.desc2"))
             print()
-            print("The core script only supports:")
-            print(" - starting the server")
-            print(" - --info / --license / --help / --version")
-            print(" - installing modules (this flow)")
+            print(t("core.first_run.desc3"))
+            print(t("core.first_run.desc4"))
+            print(t("core.first_run.desc5"))
+            print(t("core.first_run.desc6"))
             print()
-            print("After installing modules you get: server initialization, version")
-            print("control, backups, plugins, worlds, crash analysis, players,")
-            print("settings and maintenance.")
+            print(t("core.first_run.desc7"))
             print()
-            print("Modules are downloaded from GitHub and verified with MD5 checks.")
-            print("You can also run './start.sh --install all' later to install everything.")
+            print(t("core.first_run.desc8"))
+            print(t("core.first_run.desc9"))
         if not MODULES_DIR:
             path = choose_modules_dir()
             if not path:
@@ -1728,16 +2612,16 @@ def run_install_flow(args=None, first_run=False):
         return install_modules_from_info(update_info, selected)
     except (KeyboardInterrupt, EOFError):
         logger.warning("Module installation interrupted by user (KeyboardInterrupt)")
-        print("\nInstallation canceled.\n")
+        print("\n" + t("core.install.canceled") + "\n")
         return False
 
 
 def update_installed_modules(update_info, force=False):
     logger.info(f"Checking installed modules for updates (force={force})")
-    print("Checking installed modules...")
+    print(t("core.update.modules_check"))
     installed = read_modules_json()
     if not installed:
-        print("No modules installed. Nothing to update.\n")
+        print(t("core.update.modules_none") + "\n")
         return
     updates = []
     cloud_modules = update_info.get("modules", {})
@@ -1751,14 +2635,14 @@ def update_installed_modules(update_info, force=False):
         if force or local_version != cloud.get("version") or local_md5 != cloud.get("md5"):
             updates.append((name, cloud))
     if not updates:
-        print("All installed modules are up to date.\n")
+        print(t("core.update.modules_uptodate") + "\n")
         return
-    print("\nUpdates available for installed modules:")
+    print("\n" + t("core.update.modules_available"))
     for name, cloud in updates:
         local = installed.get(name, {})
         local_version = local.get("version") if isinstance(local, dict) else "?"
         print(f" - {name}: {local_version} -> {cloud.get('version')}")
-    confirm = input("\nUpdate these modules now? (y/N): ").strip().upper() or "N"
+    confirm = input("\n" + t("core.update.modules_ask") + " ").strip().upper() or "N"
     if confirm != "Y":
         print("Module updates canceled.\n")
         return
@@ -1776,6 +2660,42 @@ def update_installed_modules(update_info, force=False):
     logger.info(f"Module update finished: {updated_count} updated, {len(updates) - updated_count} failed")
     print("")
 
+def update_language_files(update_info):
+    print(t("core.update.languages_check"))
+    installed = get_installed_languages()
+    remote = get_remote_languages(update_info)
+    outdated = []
+    for item in installed:
+        code = item["code"]
+        if code == "en":
+            continue
+        info = remote.get(code)
+        if not info:
+            continue
+        local_version = "?"
+        try:
+            with open(item["path"], "r", encoding="utf-8") as f:
+                local_version = json.load(f).get("version", "?")
+        except Exception as e:
+            logger.warning(f"Could not read language version for {code}: {e}")
+        if str(local_version) != str(info.get("version")):
+            outdated.append((code, info, local_version))
+    if not outdated:
+        print(t("core.update.languages_uptodate"))
+        return
+    print(t("core.update.languages_available"))
+    for code, info, local_version in outdated:
+        print(f" - {code}: {local_version} -> {info.get('version')}")
+    confirm = input(t("core.update.languages_ask") + " ").strip().upper() or "N"
+    if confirm != "Y":
+        print("Language updates canceled.\n")
+        return
+    for code, info, _ in outdated:
+        if download_language_file(code, info):
+            if code == CURRENT_LANG:
+                load_language(code)
+    print("")
+
 
 def get_installed_module_names():
     names = []
@@ -1786,6 +2706,14 @@ def get_installed_module_names():
         if name not in names:
             names.append(name)
     return sorted(set(names))
+
+def require_module(name):
+    """Load a module or print a clear "not installed" message."""
+    module = load_module(name)
+    if module is None:
+        print("\n" + t("core.module.required_missing", name=name))
+        print(t("core.module.install_hint", name=name) + "\n")
+    return module
 
 
 def load_module(name):
@@ -1832,12 +2760,11 @@ class CoreContext:
         self.LOG_DIR = LOG_DIR
         self.LOG_FILE = LOG_FILE
         self.logger = logger
-        self.print_banner = print_banner
         self.confirm_action = confirm_action
-        self.log_and_print = log_and_print
         self.safe_rmtree = safe_rmtree
         self.unlock_with_logging = _unlock_with_logging
         self.format_file_size = format_file_size
+        self.truncate_text = truncate_text
         self.load_config = load_config
         self.create_lock = create_lock
         self.remove_lock = remove_lock
@@ -1849,8 +2776,10 @@ class CoreContext:
         self.get_uptime = get_uptime
         self.compare_versions = compare_versions
         self.USER_AGENT = USER_AGENT
-        self.preserve_modules_config = preserve_modules_config
-        self.restore_modules_config = restore_modules_config
+        self.preserve_script_config = preserve_script_config
+        self.restore_script_config = restore_script_config
+        self.t = t
+        self.require_module = require_module
 
     def get_module(self, name):
         return load_module(name)
@@ -1878,27 +2807,26 @@ MODULE_COMMANDS = {
 
 def show_help():
     print("=" * 51)
-    print(f"      Minecraft Server Management Tool (v{SCRIPT_VERSION})")
+    print(t("core.help.title", version=SCRIPT_VERSION).center(51))
     print("=" * 51)
     print("")
-    print("A modular command-line tool for managing")
-    print("Minecraft server versions, backups, plugins and")
-    print("other configurations with ease.")
+    print(t("core.help.desc"))
     print("")
-    print("Usage:")
+    print(t("core.help.usage"))
     print(f"  {SCRIPT_NAME} [command] [options]")
     print("")
-    print("Core Commands:")
-    print("  (no command)           Start the server")
-    print("  --install [module|all] Install or update modules")
-    print("  --info                 Show current server configuration")
-    print("  --version [force]      Check for script and module updates")
-    print("  --license              Show the open source license")
-    print("  --help                 Show this help message")
+    print(t("core.help.core"))
+    print(f"  (no command)           {t('core.help.start')}")
+    print(f"  --install [module|all] {t('core.help.install')}")
+    print(f"  --info                 {t('core.help.info')}")
+    print(f"  --version [force]      {t('core.help.version')}")
+    print(f"  --lang [code]          {t('core.help.lang')}")
+    print(f"  --license              {t('core.help.license')}")
+    print(f"  --help                 {t('core.help.help')}")
     print("")
     installed = get_installed_module_names()
     if installed:
-        print("Installed Module Commands:")
+        print(t("core.help.installed"))
         print("-" * 51)
         for name in installed:
             module = load_module(name)
@@ -1906,27 +2834,27 @@ def show_help():
                 continue
             commands = module.MODULE.get("commands", {})
             for command, description in commands.items():
-                print(f"  {command:<22} {description}")
+                print(f"  {command:<22} {t(description)}")
         print("-" * 51)
         print("")
     else:
-        print("No modules installed.")
-        print('Use "--install" to choose modules, or "--install all" to install everything.')
+        print(t("core.help.no_modules"))
+        print(t("core.help.install_hint"))
         print("")
     try:
         update_info = get_update_info()
         available = update_info.get("modules", {})
         uninstalled = [name for name in sorted(available) if name not in installed]
         if uninstalled:
-            print("Not Installed (available via --install):")
+            print(t("core.help.not_installed"))
             print("=" * 51)
             for name in uninstalled:
                 info = available[name]
                 print(f"  {name:<12} - {info.get('description', '')}")
             print("")
-            print('Tip: "--install all" installs all modules.')
+            print(t("core.help.tip_all"))
     except Exception as e:
-        print('Run "--install" to view and install available modules.')
+        print(t("core.help.install_available"))
     print("")
 
 
@@ -1937,8 +2865,15 @@ def main():
     logger.info(f"Starting {SCRIPT_NAME} version {SCRIPT_VERSION}")
     clear_screen()
     args = sys.argv[1:]
+    ensure_script_config()
     resolve_modules_dir()
-    core_only_commands = ("--help", "--license", "--install", "--version")
+    if args and args[0] == "--lang" and len(args) > 1:
+        load_language(get_script_language())
+    elif not SCRIPT_CONFIG_FILE.exists() or not get_script_config().has_option("script", "language"):
+        run_language_selection()
+    else:
+        load_language(get_script_language())
+    core_only_commands = ("--help", "--license", "--install", "--version", "--lang")
     is_core_only = bool(args) and args[0] in core_only_commands
     if args and args[0] == "--install":
         try:
@@ -1957,7 +2892,7 @@ def main():
             logger.warning("Script interrupted by user (KeyboardInterrupt)")
             print("\n\nScript interrupted by user\n")
         if not is_modules_environment_installed():
-            print("No modules installed. Run '--install' to set up modules.\n")
+            print(t("core.install.no_modules") + "\n")
             logger.info("Exiting script\n")
             return
     try:
@@ -1990,6 +2925,9 @@ def main():
         elif args[0] == "--help":
             logger.info("Showing help")
             show_help()
+        elif args[0] == "--lang":
+            logger.info("Running language command")
+            cmd_lang(args)
         elif args[0] in MODULE_COMMANDS:
             module_name = MODULE_COMMANDS[args[0]]
             logger.info(f"Routing command to module: {module_name}")
@@ -1997,13 +2935,13 @@ def main():
             if module and hasattr(module, "dispatch"):
                 module.dispatch(args, ctx)
             else:
-                print(f"Module '{module_name}' is not installed.")
-                print(f'Install it with: --install {module_name}\n')
+                print(t("core.module.missing", name=module_name))
+                print(t("core.module.install_hint", name=module_name) + "\n")
                 sys.exit(1)
         else:
             logger.warning(f"Invalid command: {' '.join(args)}")
-            print("\nInvalid command or arguments")
-            print(f"Use '{SCRIPT_NAME} --help' for usage information\n")
+            print("\n" + t("core.invalid_command"))
+            print(t("core.invalid_use_help", script=SCRIPT_NAME) + "\n")
             sys.exit(1)
         logger.info("Command execution completed")
     except KeyboardInterrupt:
@@ -2016,8 +2954,8 @@ def main():
         raise
     except Exception as e:
         logger.error(f"Unexpected error in main(): {e}\n", exc_info=True)
-        print(f"\nAn unexpected error occurred: {e}")
-        print("Check the log file for more details:", LOG_FILE, "\n")
+        print(f"\n{t('core.unexpected_error', error=e)}")
+        print(t("core.check_log", log=LOG_FILE) + "\n")
         sys.exit(1)
     logger.info("Exiting script\n")
 

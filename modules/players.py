@@ -18,32 +18,29 @@ MODULE = {
     "description": "Manage banned players, IP bans and whitelist",
     "requires": [],
     "commands": {
-        "--players": "Manage banned players, IPs, and whitelist",
+        "--players": "cmd.players",
     },
 }
 
 BASE_DIR = None
 SERVER_PROPERTIES = None
 logger = None
+truncate_text = None
+t = None
 
 
 def bind(ctx):
-    global BASE_DIR, SERVER_PROPERTIES, logger
+    global BASE_DIR, SERVER_PROPERTIES, logger, truncate_text, t
     BASE_DIR = ctx.BASE_DIR
     SERVER_PROPERTIES = ctx.SERVER_PROPERTIES
     logger = ctx.logger
+    truncate_text = ctx.truncate_text
+    t = ctx.t
 
 
 def dispatch(args, ctx):
     if args and args[0] == "--players":
         manage_player_lists()
-
-
-def truncate_text(text, max_length):
-    text = str(text)
-    if len(text) > max_length:
-        return text[:max_length - 3] + "..."
-    return text
 
 
 def generate_offline_uuid(username: str) -> str:
@@ -121,18 +118,18 @@ def is_online_mode():
 def format_list_table(items, list_type):
     if not items:
         if list_type == "banned-ips":
-            return "                          - Banned IPs -\n╔═════════════════════════════════════════════════════════════╗\n║                                                             ║\n║                      No banned IPs found.                   ║\n║                                                             ║\n╚═════════════════════════════════════════════════════════════╝"
+            return t("players.table_banned_ips_empty")
         elif list_type == "banned-players":
-            return "                        - Banned Players -\n╔════════════════════════════════════════════════════════════════╗\n║                                                                ║\n║                    No banned players found.                    ║\n║                                                                ║\n╚════════════════════════════════════════════════════════════════╝"
+            return t("players.table_banned_players_empty")
         else:
-            return "                          - Whitelist -    \n╔════════════════════════════════════════════════════════════════╗\n║                                                                ║\n║                 No whitelisted players found.                  ║\n║                                                                ║\n╚════════════════════════════════════════════════════════════════╝"
+            return t("players.table_whitelist_empty")
     if list_type == "banned-ips":
         name_width = 20
         reason_width = 40
         table = []
-        table.append("                          - Banned IPs -")
+        table.append(t("players.table_banned_ips"))
         table.append("╔" + "═" * name_width + "╦" + "═" * reason_width + "╗")
-        table.append("║" + " IP Address".ljust(name_width-1) + " ║" + " Reason".ljust(reason_width-1) + " ║")
+        table.append("║" + (" " + t("players.col_ip")).ljust(name_width) + "║" + (" " + t("players.col_reason")).ljust(reason_width) + "║")
         table.append("╠" + "═" * name_width + "╬" + "═" * reason_width + "╣")
         for i, item in enumerate(items, 1):
             ip = item.get("ip", "Unknown")
@@ -148,11 +145,11 @@ def format_list_table(items, list_type):
         uuid_width = 38
         table = []
         if list_type == "banned-players":
-            table.append("                        - Banned Players -")
+            table.append(t("players.table_banned_players"))
         else:
-            table.append("                          - Whitelist -")
+            table.append(t("players.table_whitelist"))
         table.append("╔" + "═" * name_width + "╦" + "═" * uuid_width + "╗")
-        table.append("║" + " Player Name".ljust(name_width-1) + " ║" + " UUID".ljust(uuid_width-1) + " ║")
+        table.append("║" + (" " + t("players.col_name")).ljust(name_width) + "║" + (" " + t("players.col_uuid")).ljust(uuid_width) + "║")
         table.append("╠" + "═" * name_width + "╬" + "═" * uuid_width + "╣")
         for i, item in enumerate(items, 1):
             name = item.get("name", "Unknown")
@@ -169,15 +166,15 @@ def format_list_table(items, list_type):
 def manage_player_lists():
     logger.info("Starting player list management")
     print("\n" + "=" * 50)
-    print("              Player List Management")
+    print(t("players.title").center(50))
     print("=" * 50)
-    print("\nSelect list to manage:")
-    print(" 1. Banned Players (banned-players.json)")
-    print(" 2. Banned IPs (banned-ips.json)")
-    print(" 3. Whitelist (whitelist.json)")
+    print("\n" + t("players.select_list"))
+    print(" 1. " + t("players.opt_banned_players"))
+    print(" 2. " + t("players.opt_banned_ips"))
+    print(" 3. " + t("players.opt_whitelist"))
     print("")
     try:
-        choice = input("Enter your choice (1-3) or press Enter to exit: ").strip()
+        choice = input(t("players.choose_prompt") + " ").strip()
         if not choice:
             logger.info("User exited player list management without selection")
             print("")
@@ -185,7 +182,7 @@ def manage_player_lists():
         list_choice = int(choice)
         if list_choice not in [1, 2, 3]:
             logger.warning(f"Invalid list choice: {choice}")
-            print("Invalid choice.\n")
+            print(t("players.invalid_choice") + "\n")
             return
         list_files = {
             1: "banned-players.json",
@@ -215,12 +212,12 @@ def manage_player_lists():
         else:
             logger.info(f"File {selected_file} does not exist, starting with empty list")
         print("\n" + format_list_table(items, selected_type))
-        print("\nAvailable operations:")
-        print(" A - Add new entry")
+        print("\n" + t("players.available_ops"))
+        print(" " + t("players.add_entry"))
         if items:
-            print(" D - Delete existing entry")
+            print(" " + t("players.delete_entry"))
         print("")
-        op_choice = input("Enter operation (A/D) or press Enter to exit: ").strip().upper()
+        op_choice = input(t("players.op_prompt") + " ").strip().upper()
         if not op_choice:
             logger.info("User exited without selecting operation")
             print("")
@@ -234,40 +231,40 @@ def manage_player_lists():
                 delete_from_list(items, selected_type, file_path)
             else:
                 logger.info(f"Attempted to delete from empty {selected_type} list")
-                print("No entries to delete.\n")
+                print(t("players.no_entries") + "\n")
         else:
             logger.warning(f"Invalid operation choice: {op_choice}")
-            print("Invalid operation.\n")
+            print(t("players.invalid_op") + "\n")
     except ValueError:
         logger.error("Invalid input in player list management - expected number")
-        print("Invalid input. Please enter a number.\n")
+        print(t("players.enter_number") + "\n")
     except Exception as e:
         logger.error(f"Error in player list management: {e}")
-        print(f"Error: {e}\n")
+        print(t("players.delete_error", list=selected_type if 'selected_type' in dir() else "?", error=e) + "\n")
 
 
 def delete_from_list(items, list_type, file_path):
     logger.info(f"Starting delete operation on {list_type}")
     if not items:
         logger.warning(f"Attempted to delete from empty {list_type} list")
-        print(f"\n{list_type} is empty. Nothing to delete.\n")
+        print("\n" + t("players.empty_list", list=list_type) + "\n")
         return
-    print(f"\nDeleting from {list_type}...")
+    print("\n" + t("players.deleting_from", list=list_type) + "...")
     try:
-        selection = input("Enter the number(s) to delete (space-separated): ").strip()
+        selection = input(t("players.delete_selection") + " ").strip()
         if not selection:
             logger.info("User cancelled delete operation")
-            print("Operation cancelled.\n")
+            print(t("players.op_cancelled") + "\n")
             return
         indices = [int(i.strip()) for i in selection.split()]
         indices.sort(reverse=True)
         valid_indices = [i for i in indices if 1 <= i <= len(items)]
         if not valid_indices:
             logger.warning(f"No valid indices in delete selection: {selection}")
-            print("No valid numbers selected.\n")
+            print(t("players.no_valid_numbers") + "\n")
             return
         logger.info(f"User selected indices for deletion: {valid_indices}")
-        print("\nThe following entries will be deleted:")
+        print("\n" + t("players.will_delete"))
         entries_to_delete = []
         for idx in valid_indices:
             item = items[idx-1]
@@ -278,10 +275,10 @@ def delete_from_list(items, list_type, file_path):
             entries_to_delete.append(entry_info)
             print(f" - {entry_info}")
         logger.info(f"Entries to delete: {', '.join(entries_to_delete)}")
-        confirm = input("\nAre you sure? (y/N): ").strip().upper() or "N"
+        confirm = input("\n" + t("players.are_you_sure") + " ").strip().upper() or "N"
         if confirm != 'Y':
             logger.info("User cancelled deletion after confirmation")
-            print("Deletion cancelled.\n")
+            print(t("players.deletion_cancelled") + "\n")
             return
         logger.info("User confirmed deletion")
         for idx in valid_indices:
@@ -295,24 +292,24 @@ def delete_from_list(items, list_type, file_path):
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(items, f, indent=2, ensure_ascii=False)
         logger.info(f"Successfully deleted {len(valid_indices)} entries from {list_type}")
-        print(f"\nSuccessfully deleted {len(valid_indices)} entries from {list_type}!\n")        
+        print("\n" + t("players.deleted_count", list=list_type, count=len(valid_indices)) + "\n")
     except ValueError:
         logger.error("Invalid input in delete operation - expected numbers separated by spaces")
-        print("Invalid input. Please enter numbers separated by spaces.\n")
+        print(t("players.enter_numbers") + "\n")
     except Exception as e:
         logger.error(f"Error deleting from {list_type}: {e}")
-        print(f"Error deleting from {list_type}: {e}\n")
+        print(t("players.delete_error", list=list_type, error=e) + "\n")
 
 
 def add_to_list(items, list_type, file_path):
     logger.info(f"Starting add operation to {list_type}")
-    print(f"\nAdding to {list_type}...")
+    print("\n" + t("players.adding_to", list=list_type) + "...")
     if list_type == "banned-ips":
         while True:
-            ip = input("Enter IP address to ban: ").strip()
+            ip = input(t("players.enter_ip") + " ").strip()
             if not ip:
                 logger.info("User cancelled IP ban addition")
-                print("Operation cancelled.\n")
+                print(t("players.op_cancelled") + "\n")
                 return
             ip_pattern = re.compile(
                 r'^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.'
@@ -325,8 +322,8 @@ def add_to_list(items, list_type, file_path):
                 break
             else:
                 logger.warning(f"Invalid IP address format: {ip}")
-                print("Invalid IP address format. Please try again.\n")
-        reason = input("\nEnter ban reason (optional): ").strip() or "Banned by an operator."
+                print(t("players.invalid_ip") + "\n")
+        reason = input("\n" + t("players.ban_reason") + " ").strip() or t("players.default_reason")
         logger.info(f"Ban reason: {reason}")
         new_entry = {
             "ip": ip,
@@ -342,13 +339,13 @@ def add_to_list(items, list_type, file_path):
         use_offline_uuid = False
         if not online_mode:
             logger.warning("Server is in offline mode, will generate offline UUIDs")
-            print("\nWARNING: Server is in offline mode (online-mode=false).")
-            print("UUIDs for offline players are generated locally and may differ from other servers.")
-            print("This means the same username may have a different UUID on other servers.\n")
-            choice = input("Do you want to continue using offline UUIDs? (y/N): ").strip().upper() or "N"
+            print("\n" + t("players.offline_warning1"))
+            print(t("players.offline_warning2"))
+            print(t("players.offline_warning3") + "\n")
+            choice = input(t("players.offline_ask") + " ").strip().upper() or "N"
             if choice != 'Y':
                 logger.info("User cancelled adding player in offline mode")
-                print("Operation cancelled.\n")
+                print(t("players.op_cancelled") + "\n")
                 return
             logger.info("User chose to continue in offline mode, will generate offline UUID")
             use_offline_uuid = True
@@ -356,39 +353,39 @@ def add_to_list(items, list_type, file_path):
         uuid = None
         actual_name = None
         while True:
-            username_input = input("\nEnter player username: ").strip()
+            username_input = input("\n" + t("players.enter_username") + " ").strip()
             if not username_input:
                 logger.info("User cancelled player addition")
-                print("Operation cancelled.\n")
+                print(t("players.op_cancelled") + "\n")
                 return
             if len(username_input) > 16:
                 logger.warning(f"Username too long: {username_input}")
-                print("Username too long (max 16 characters). Please try again.")
+                print(t("players.username_too_long"))
                 continue
             if use_offline_uuid:
                 logger.info(f"Generating offline UUID for username: {username_input}")
                 uuid = generate_offline_uuid(username_input)
                 actual_name = username_input
-                print(f"Generated: {actual_name} -> {uuid}")
+                print(t("players.generated", name=actual_name, uuid=uuid))
                 break
             else:
                 logger.info(f"Fetching UUID for username: {username_input}")
-                print(f"Fetching UUID for {username_input}...")
+                print(t("players.fetching_uuid", name=username_input) + "...")
                 uuid, actual_name = get_mojang_uuid(username_input)
                 if not uuid:
                     logger.error(f"Could not fetch UUID for username: {username_input}")
-                    print(f"Error: Could not fetch UUID for '{username_input}'.")
-                    print("Please check the username and try again.")
+                    print(t("players.fetch_failed", name=username_input))
+                    print(t("players.check_username"))
                     continue
                 logger.info(f"Successfully fetched UUID for {username_input}: {uuid}")
-                print(f"Found: {actual_name} -> {uuid}")
+                print(t("players.found", name=actual_name, uuid=uuid))
                 break
         if actual_name is None or uuid is None:
             logger.error("Failed to obtain valid username/UUID, this should not happen")
-            print("Internal error: could not obtain valid player information.\n")
+            print(t("players.internal_error") + "\n")
             return
         if list_type == "banned-players":
-            reason = input("\nEnter ban reason (optional): ").strip() or "Banned by an operator."
+            reason = input("\n" + t("players.ban_reason") + " ").strip() or t("players.default_reason")
             logger.info(f"Ban reason: {reason}")
             new_entry = {
                 "uuid": uuid,
@@ -411,7 +408,7 @@ def add_to_list(items, list_type, file_path):
         with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(items, f, indent=2, ensure_ascii=False)
         logger.info(f"Successfully saved {list_type} to {file_path}")
-        print(f"\nSuccessfully added to {list_type}!\n")
+        print("\n" + t("players.added_success", list=list_type) + "\n")
     except Exception as e:
         logger.error(f"Error saving {list_type}: {e}")
-        print(f"Error saving {list_type}: {e}\n")
+        print(t("players.save_error", list=list_type, error=e) + "\n")

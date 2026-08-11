@@ -16,27 +16,31 @@ MODULE = {
     "description": "Plugin management with dependency awareness",
     "requires": [],
     "commands": {
-        "--plugins": "Manage plugins with dependency awareness",
-        "--plugins analyze": "Analyze and display plugin dependency tree",
+        "--plugins": "cmd.plugins",
+        "--plugins analyze": "cmd.plugins.analyze",
     },
 }
 
 PLUGINS_DIR = None
 logger = None
+truncate_text = None
+t = None
 
 
 def bind(ctx):
-    global PLUGINS_DIR, logger
+    global PLUGINS_DIR, logger, truncate_text, t
     PLUGINS_DIR = ctx.PLUGINS_DIR
     logger = ctx.logger
+    truncate_text = ctx.truncate_text
+    t = ctx.t
 
 
 def dispatch(args, ctx):
     if not args or args[0] != "--plugins":
         return
     if yaml is None:
-        print("\nError: PyYAML is required by the plugins module.")
-        print("Please install it with: pip install PyYAML\n")
+        print("\n" + t("plugins.yaml_required"))
+        print(t("plugins.yaml_install") + "\n")
         return
     if len(args) > 1 and args[1] == "analyze":
         analyze_plugin_dependencies_cli()
@@ -44,25 +48,19 @@ def dispatch(args, ctx):
         manage_plugins_with_dependencies()
 
 
-def truncate_text(text, max_length):
-    if len(text) > max_length:
-        return text[:max_length-3] + "..."
-    return text
-
-
 def format_plugins_table(plugins):
     name_width = 25
     version_width = 15
     status_width = 10
     table = []
-    table.append("                - Plugins Management -")
+    table.append(t("plugins.table_title").center(40))
     table.append("╔" + "═" * name_width + "╦" + "═" * version_width + "╦" + "═" * status_width + "╗")
-    table.append("║" + " Plugins".ljust(name_width-1) + " ║" + " Version".ljust(version_width-1) + " ║" + " Status".ljust(status_width-1) + " ║")
+    table.append("║" + (" " + t("plugins.col_name")).ljust(name_width) + "║" + (" " + t("plugins.col_version")).ljust(version_width) + "║" + (" " + t("plugins.col_status")).ljust(status_width) + "║")
     table.append("╠" + "═" * name_width + "╬" + "═" * version_width + "╬" + "═" * status_width + "╣")
     for i, plugin in enumerate(plugins, 1):
         name = f"{i}. {plugin['name']}"
         version = plugin['version']
-        status = "Enabled" if plugin['enabled'] else "Disabled"
+        status = t("plugins.enabled") if plugin['enabled'] else t("plugins.disabled")
         name_display = truncate_text(name, name_width-1)
         version_display = truncate_text(version, version_width-1)
         status_display = truncate_text(status, status_width-1)
@@ -169,14 +167,14 @@ def manage_plugins_with_dependencies():
     logger.info("Starting plugin management with dependency analysis")
     if not PLUGINS_DIR.exists():
         logger.error("Plugins directory not found")
-        print("\nPlugins directory not found!")
+        print("\n" + t("plugins.dir_not_found") + "!")
         print("")
         return
     plugin_files = list(PLUGINS_DIR.glob("*.jar")) + list(PLUGINS_DIR.glob("*.jar.disabled"))
     logger.info(f"Found {len(plugin_files)} plugin files (including disabled)")
     if not plugin_files:
         logger.info("No plugins found in directory")
-        print("\nNo plugins found!")
+        print("\n" + t("plugins.none_found") + "!")
         print("")
         return
     plugins = []
@@ -195,17 +193,17 @@ def manage_plugins_with_dependencies():
     disabled_count = len([p for p in plugins if not p['enabled']])
     logger.info(f"Plugin statistics: {enabled_count} enabled, {disabled_count} disabled")
     print("\n" + format_plugins_table(plugins))
-    choice = input("\nDo you want to toggle these plugins? (y/N): ").strip().upper() or "N"
+    choice = input("\n" + t("plugins.toggle_ask") + " (y/N): ").strip().upper() or "N"
     logger.info(f"User choice for plugin toggle: {choice}")
     if choice != 'Y':
         logger.info("User cancelled plugin management")
         print("")
         return
     try:
-        selected = input("Enter the numbers of the plugin you want to toggle (e.g., '1 2 3'): ").strip()
+        selected = input(t("plugins.toggle_numbers") + " ").strip()
         if not selected:
             logger.info("No plugins selected for toggling")
-            print("No plugins selected.\n")
+            print(t("plugins.no_selection") + "\n")
             return
         logger.info(f"User selected plugins: {selected}")
         indices = [int(i) for i in selected.split()]
@@ -213,7 +211,7 @@ def manage_plugins_with_dependencies():
         logger.info(f"Valid plugin indices after filtering: {indices}")
         if not indices:
             logger.warning("No valid plugin numbers selected")
-            print("No valid plugin numbers selected.\n")
+            print(t("plugins.no_valid_numbers") + "\n")
             return
         plugins_to_disable = []
         plugins_to_enable = []
@@ -235,10 +233,10 @@ def manage_plugins_with_dependencies():
                 plugin['path'] = new_path
                 plugin['enabled'] = True
                 logger.info(f"Enabled plugin: {plugin['name']}")
-                print(f"Enabled: {plugin['name']}")
+                print(t("plugins.enabled_one", name=plugin['name']))
             except Exception as e:
                 logger.error(f"Failed to enable plugin {plugin['name']}: {e}")
-                print(f"Error enabling {plugin['name']}: {e}")
+                print(t("plugins.enable_error", name=plugin['name'], error=e))
         for plugin in plugins_to_disable:
             dependencies = check_plugin_dependencies(plugins, plugin)
             hard_dependents = dependencies['hard_dependents']
@@ -256,19 +254,19 @@ def manage_plugins_with_dependencies():
                 print(warning_message)
                 if hard_dependents:
                     logger.info("Presenting options for hard dependencies")
-                    print(f"\nYou have multiple options:")
-                    print(" 1. Disable the dependent plugins first, then disable this one")
-                    print(" 2. Force disable this plugin anyway (RISKY)")
-                    print(" 3. Disable the whole plugin chain for me (AUTOMATIC)")
+                    print("\n" + t("plugins.multiple_options"))
+                    print(" 1. " + t("plugins.opt_manual"))
+                    print(" 2. " + t("plugins.opt_force"))
+                    print(" 3. " + t("plugins.opt_auto"))
                     while True:
                         choice = input("\nChoose option (1/2/3) or 'C' to cancel: ").strip().upper()
                         logger.info(f"User dependency resolution choice: {choice}")
                         if choice == '1':
                             logger.info(f"User chose to manually disable dependent plugins first")
-                            print("Please disable the dependent plugins first:")
+                            print(t("plugins.disable_dependents_first"))
                             for dependent in hard_dependents:
                                 print(f" - {dependent['name']}")
-                            print("Then try disabling this plugin again.\n")
+                            print(t("plugins.then_retry") + "\n")
                             continue
                         elif choice == '2':
                             logger.warning(f"User chose to force disable {plugin['name']}")
@@ -282,11 +280,11 @@ def manage_plugins_with_dependencies():
                                     plugin['path'] = new_path
                                     plugin['enabled'] = False
                                     logger.info(f"Force disabled: {plugin['name']}")
-                                    print(f"Force disabled: {plugin['name']}\n")
+                                    print(t("plugins.force_disabled", name=plugin['name']) + "\n")
                                     break
                                 except Exception as e:
                                     logger.error(f"Failed to force disable {plugin['name']}: {e}")
-                                    print(f"Error force disabling {plugin['name']}: {e}\n")
+                                    print(t("plugins.force_error", name=plugin['name'], error=e) + "\n")
                                     break
                             else:
                                 logger.info(f"User cancelled force disable for {plugin['name']}")
@@ -297,24 +295,24 @@ def manage_plugins_with_dependencies():
                             if disabled_plugins:
                                 disabled_names = [p['name'] for p in disabled_plugins]
                                 logger.info(f"Automatically disabled {len(disabled_plugins)} plugins: {disabled_names}")
-                                print(f"\nAutomatically disabled the following plugins:")
+                                print("\n" + t("plugins.auto_disabled"))
                                 for disabled_plugin in disabled_plugins:
                                     print(f" - {disabled_plugin['name']}")           
                                 if soft_dependents:
                                     soft_names = [dep['name'] for dep in soft_dependents]
                                     logger.info(f"Soft dependents not auto-disabled: {soft_names}")
-                                    print(f"\nNote: The following plugins have soft dependencies and were NOT automatically disabled:")
+                                    print("\n" + t("plugins.soft_not_auto"))
                                     for soft_dep in soft_dependents:
                                         print(f"  - {soft_dep['name']}")
-                                    print("These plugins may lose some functionality but should still work.\n")
+                                    print(t("plugins.may_lose") + "\n")
                             break
                         elif choice == 'C':
                             logger.info(f"User cancelled disabling of {plugin['name']}")
-                            print(f"Cancelled disabling: {plugin['name']}\n")
+                            print(t("plugins.cancelled_disable", name=plugin['name']) + "\n")
                             break
                         else:
                             logger.warning(f"Invalid dependency resolution choice: {choice}")
-                            print("Invalid choice. Please enter 1, 2, 3, or C.\n")
+                            print(t("plugins.invalid_choice") + "\n")
                 else:
                     logger.info(f"Only soft dependencies found for {plugin['name']}")
                     confirm = input(f"\nDo you still want to disable {plugin['name']}? (y/N): ").strip().upper() or "N"
@@ -327,13 +325,13 @@ def manage_plugins_with_dependencies():
                             plugin['path'] = new_path
                             plugin['enabled'] = False
                             logger.info(f"Disabled plugin with soft dependencies: {plugin['name']}")
-                            print(f"Disabled: {plugin['name']}")
+                            print(t("plugins.disabled_one", name=plugin['name']))
                         except Exception as e:
                             logger.error(f"Failed to disable {plugin['name']}: {e}")
-                            print(f"Error disabling {plugin['name']}: {e}")
+                            print(t("plugins.disable_error", name=plugin['name'], error=e))
                     else:
                         logger.info(f"User skipped disabling {plugin['name']}")
-                        print(f"Skipped: {plugin['name']}")
+                        print(t("plugins.skipped", name=plugin['name']))
             else:
                 logger.info(f"No dependencies found for {plugin['name']}, disabling directly")
                 try:
@@ -343,22 +341,22 @@ def manage_plugins_with_dependencies():
                     plugin['path'] = new_path
                     plugin['enabled'] = False
                     logger.info(f"Disabled plugin without dependencies: {plugin['name']}")
-                    print(f"Disabled: {plugin['name']}")
+                    print(t("plugins.disabled_one", name=plugin['name']))
                 except Exception as e:
                     logger.error(f"Failed to disable {plugin['name']}: {e}")
-                    print(f"Error disabling {plugin['name']}: {e}")
+                    print(t("plugins.disable_error", name=plugin['name'], error=e))
         enabled_after = len([p for p in plugins if p['enabled']])
         disabled_after = len([p for p in plugins if not p['enabled']])
         logger.info(f"Final plugin statistics: {enabled_after} enabled, {disabled_after} disabled")
         logger.info("Plugin state changes completed successfully")
-        print("\nPlugin states changed successfully!")
+        print("\n" + t("plugins.states_changed") + "!")
         print("")
     except ValueError:
         logger.error("Invalid input - expected numbers separated by spaces")
-        print("Invalid input. Please enter numbers separated by spaces.\n")
+        print(t("plugins.invalid_input") + "\n")
     except Exception as e:
         logger.error(f"Error toggling plugins: {e}")
-        print(f"Error toggling plugins: {e}\n")
+        print(t("plugins.toggle_error", error=e) + "\n")
 
 
 def disable_dependency_chain(plugins, target_plugin):
@@ -377,10 +375,10 @@ def disable_dependency_chain(plugins, target_plugin):
             current_plugin['enabled'] = False
             disabled_plugins.append(current_plugin)
             logger.info(f"Disabled: {current_plugin['name']}")
-            print(f"  Disabled: {current_plugin['name']}")
+            print("  " + t("plugins.disabled_one", name=current_plugin['name']))
         except Exception as e:
             logger.error(f"Error disabling {current_plugin['name']}: {e}")
-            print(f"  Error disabling {current_plugin['name']}: {e}")
+            print("  " + t("plugins.disable_error", name=current_plugin['name'], error=e))
             continue
         for plugin in plugins:
             if plugin['enabled'] and plugin not in disabled_plugins and plugin not in plugins_to_disable:
@@ -388,7 +386,7 @@ def disable_dependency_chain(plugins, target_plugin):
                 if current_plugin['name'] in dependencies['depend']:
                     plugins_to_disable.append(plugin)
                     logger.info(f"Queued for disabling (hard dependency): {plugin['name']}")
-                    print(f"  Queued for disabling (hard dependency): {plugin['name']}")
+                    print("  " + t("plugins.queued", name=plugin['name']))
     logger.info(f"Dependency chain disable finished: {len(disabled_plugins)} plugin(s) disabled")
     return disabled_plugins
 
@@ -396,18 +394,18 @@ def disable_dependency_chain(plugins, target_plugin):
 def analyze_plugin_dependencies_cli():
     logger.info("Starting analyze_plugin_dependencies_cli function")
     print("\n" + "=" * 52)
-    print("             Plugin Dependency Analysis")
+    print(t("plugins.analyze_title").center(52))
     print("=" * 52)
     if not PLUGINS_DIR.exists():
         logger.error("Plugins directory not found: %s", PLUGINS_DIR)
-        print("\nPlugins directory not found!")
+        print("\n" + t("plugins.dir_not_found") + "!")
         print("")
         return
     plugin_files = list(PLUGINS_DIR.glob("*.jar")) + list(PLUGINS_DIR.glob("*.jar.disabled"))
     logger.info("Found %d plugin files (including disabled)", len(plugin_files))
     if not plugin_files:
         logger.info("No plugins found in directory")
-        print("\nNo plugins found!")
+        print("\n" + t("plugins.none_found") + "!")
         print("")
         return
     all_plugins = []
@@ -469,36 +467,36 @@ def analyze_plugin_dependencies_cli():
         if soft_dep_not_installed:
             found_issues = True
             logger.info("Plugin %s has missing soft dependencies: %s", plugin_name, soft_dep_not_installed)
-            print(f"\nPlugin '{plugin_name}' requires following soft dependencies but not installed:")
+            print("\n" + t("plugins.soft_missing", name=plugin_name))
             for dep in soft_dep_not_installed:
                 print(f" - {dep}")
         if soft_dep_not_enabled:
             found_issues = True
             logger.info("Plugin %s has disabled soft dependencies: %s", plugin_name, soft_dep_not_enabled)
-            print(f"\nPlugin '{plugin_name}' requires following soft dependencies but not enabled:")
+            print("\n" + t("plugins.soft_disabled", name=plugin_name))
             for dep in soft_dep_not_enabled:
                 print(f" - {dep}")
         if hard_dep_not_installed:
             found_issues = True
             logger.warning("Plugin %s has missing hard dependencies: %s", plugin_name, hard_dep_not_installed)
-            print(f"\nPlugin '{plugin_name}' requires following hard dependencies but not installed:")
+            print("\n" + t("plugins.hard_missing", name=plugin_name))
             for dep in hard_dep_not_installed:
                 print(f" - {dep}")
         if hard_dep_not_enabled:
             found_issues = True
             logger.warning("Plugin %s has disabled hard dependencies: %s", plugin_name, hard_dep_not_enabled)
-            print(f"\nPlugin '{plugin_name}' requires following hard dependencies but not enabled:")
+            print("\n" + t("plugins.hard_disabled", name=plugin_name))
             for dep in hard_dep_not_enabled:
                 print(f" - {dep}")
     if not found_issues:
         logger.info("All plugin dependencies are satisfied")
-        print("\nAll plugin dependencies are satisfied!")
-        print("No missing or disabled dependencies found.")
+        print("\n" + t("plugins.all_satisfied"))
+        print(t("plugins.no_issues"))
     disabled_plugins = [p for p in all_plugins if not p['enabled']]
     logger.info("Found %d disabled plugins", len(disabled_plugins))
     if disabled_plugins:
         print("\n" + "=" * 50)
-        print("Currently Disabled Plugins:")
+        print(t("plugins.disabled_list"))
         print("=" * 50)
         for plugin in disabled_plugins:
             print(f" - {plugin['name']} (version: {plugin['version']})")
@@ -509,15 +507,15 @@ def analyze_plugin_dependencies_cli():
     total_soft_deps = sum(len(p['dependencies'].get('softdepend', [])) for p in all_plugins if p['enabled'])
     logger.info("Plugin statistics - Total: %d, Enabled: %d, Disabled: %d, Hard dependencies: %d, Soft dependencies: %d",
                 len(all_plugins), enabled_count, disabled_count, total_hard_deps, total_soft_deps)
-    print("\nYou can ignore soft dependencies if not critical.")
-    print("You should never ignore missing hard dependencies!")
+    print("\n" + t("plugins.ignore_soft"))
+    print(t("plugins.never_ignore_hard") + "!")
     print(f"\n" + "=" * 52)
-    print("Statistics:")
-    print(f" - Total plugins: {len(all_plugins)}")
-    print(f" - Enabled plugins: {enabled_count}")
-    print(f" - Disabled plugins: {disabled_count}")
-    print(f" - Total hard dependencies: {total_hard_deps}")
-    print(f" - Total soft dependencies: {total_soft_deps}")
+    print(t("plugins.statistics"))
+    print(" - " + t("plugins.total", count=len(all_plugins)))
+    print(" - " + t("plugins.enabled_count", count=enabled_count))
+    print(" - " + t("plugins.disabled_count", count=disabled_count))
+    print(" - " + t("plugins.hard_total", count=total_hard_deps))
+    print(" - " + t("plugins.soft_total", count=total_soft_deps))
     print("=" * 52)
     print("")
     logger.info("Plugin dependency analysis completed")
@@ -531,12 +529,12 @@ def disable_all_plugins():
     logger.info("Starting disable of all plugins")
     if not PLUGINS_DIR.exists():
         logger.warning("Plugins directory not found")
-        print("Plugins directory not found.")
+        print(t("plugins.dir_missing"))
         return False
     plugin_files = list(PLUGINS_DIR.glob("*.jar"))
     if not plugin_files:
         logger.info("No plugins found to disable")
-        print("No plugins found to disable.")
+        print(t("plugins.no_plugins_disable"))
         return True
     disabled_count = 0
     for plugin_path in plugin_files:
@@ -547,8 +545,8 @@ def disable_all_plugins():
                 disabled_count += 1
             except Exception as e:
                 logger.error(f"Error disabling {plugin_path.name}: {e}")
-                print(f"Error disabling {plugin_path.name}: {e}")
+                print(t("plugins.disable_error_file", name=plugin_path.name, error=e))
                 return False
     logger.info(f"Disabled {disabled_count} plugins")
-    print(f"Successfully disabled {disabled_count} plugins.")
+    print(t("plugins.disabled_count_result", count=disabled_count))
     return True

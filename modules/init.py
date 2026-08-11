@@ -21,9 +21,9 @@ MODULE = {
     "description": "Server initialization and structure standardization",
     "requires": [],
     "commands": {
-        "--init": "Initialize new server configuration",
-        "--init auto": "Automatic configuration with intelligent defaults",
-        "--standardize": "Migrate an existing server into the managed structure",
+        "--init": "cmd.init",
+        "--init auto": "cmd.init.auto",
+        "--standardize": "cmd.standardize",
     },
 }
 
@@ -37,11 +37,13 @@ remove_lock = None
 get_device_id = None
 show_info = None
 compare_versions = None
+truncate_text = None
+t = None
 
 
 def bind(ctx):
     global BASE_DIR, CONFIG_FILE, SERVER_JAR, SERVER_PROPERTIES, logger
-    global create_lock, remove_lock, get_device_id, show_info, compare_versions
+    global create_lock, remove_lock, get_device_id, show_info, compare_versions, truncate_text, t
     BASE_DIR = ctx.BASE_DIR
     CONFIG_FILE = ctx.CONFIG_FILE
     SERVER_JAR = ctx.SERVER_JAR
@@ -52,6 +54,8 @@ def bind(ctx):
     get_device_id = ctx.get_device_id
     show_info = ctx.show_info
     compare_versions = ctx.compare_versions
+    truncate_text = ctx.truncate_text
+    t = ctx.t
 
 
 def dispatch(args, ctx):
@@ -64,13 +68,6 @@ def dispatch(args, ctx):
             init_config_auto()
         else:
             init_config()
-
-
-def truncate_text(text, max_length):
-    text = str(text)
-    if len(text) > max_length:
-        return text[:max_length - 3] + "..."
-    return text
 
 
 def format_java_table(java_installations):
@@ -333,12 +330,12 @@ def validate_java_path(java_path):
 def detect_server_cores():
     if SERVER_JAR.exists():
         logger.info("core.jar already exists, skipping core detection")
-        print("core.jar already exists. Skipping core detection.")
+        print(t("init.core_exists"))
         return True
     jar_files = list(BASE_DIR.glob("*.jar"))
     if not jar_files:
         logger.info("No JAR files found in current directory")
-        print("No JAR files found in current directory.")
+        print(t("init.no_jars"))
         return False
     valid_cores = []
     for jar_file in jar_files:
@@ -354,26 +351,26 @@ def detect_server_cores():
                             'version': version_id
                         })
                         logger.info(f"Found valid server core: {jar_file.name} (Version: {version_id})")
-                        print(f"Found valid server core: {jar_file.name} (Version: {version_id})")
+                        print(t("init.found_core", name=jar_file.name, version=version_id))
         except (zipfile.BadZipFile, KeyError, json.JSONDecodeError) as e:
             logger.warning(f"Skipping {jar_file.name}: Not a valid server core ({e})")
-            print(f"Skipping {jar_file.name}: Not a valid server core ({e})")
+            print(t("init.skipping_core", name=jar_file.name, error=e))
             continue
         except Exception as e:
             logger.error(f"Error checking {jar_file.name}: {e}")
-            print(f"Error checking {jar_file.name}: {e}")
+            print(t("init.core_error", name=jar_file.name, error=e))
             continue
     if not valid_cores:
         logger.warning("No valid server cores found in JAR files")
-        print("No valid server cores found in JAR files.")
+        print(t("init.no_valid_cores"))
         return False
     if len(valid_cores) == 1:
         core = valid_cores[0]
         logger.info(f"Using the only valid server core: {core['name']}")
-        print(f"Using the only valid server core: {core['name']}")
+        print(t("init.using_only_core", name=core['name']))
         shutil.copy2(core['path'], SERVER_JAR)
         logger.info(f"Copied {core['name']} to core.jar")
-        print(f"Copied {core['name']} to core.jar")
+        print(t("init.copied_core", name=core['name']))
         return True
     logger.info(f"Found multiple valid server cores: {', '.join(core['name'] for core in valid_cores)}")
     return valid_cores
@@ -393,15 +390,15 @@ def select_server_core(cores, auto_mode=False):
                 if not highest_core:
                     highest_core = core
         if highest_core:
-            print(f"Auto-selected highest version: {highest_core['name']} (Version: {highest_core['version']})")
+            print(t("init.auto_selected", name=highest_core['name'], version=highest_core['version']))
             shutil.copy2(highest_core['path'], SERVER_JAR)
-            print(f"Copied {highest_core['name']} to core.jar")
+            print(t("init.copied_core", name=highest_core['name']))
             return True
         else:
-            print("Error: Could not auto-select a server core.")
+            print(t("init.auto_select_error"))
             return False
     else:
-        print("\nDetected multiple server cores in current directory:")
+        print("\n" + t("init.multiple_cores"))
         for i, core in enumerate(cores, 1):
             print(f" {i}. {core['name']} (Version: {core['version']})")
         while True:
@@ -420,45 +417,45 @@ def select_server_core(cores, auto_mode=False):
                             if not highest_core:
                                 highest_core = core
                     if highest_core:
-                        print(f"Selected newest version: {highest_core['name']} (Version: {highest_core['version']})")
+                        print(t("init.selected_newest", name=highest_core['name'], version=highest_core['version']))
                         shutil.copy2(highest_core['path'], SERVER_JAR)
-                        print(f"Copied {highest_core['name']} to core.jar")
+                        print(t("init.copied_core", name=highest_core['name']))
                         return True
                     else:
-                        print("Error: Could not determine newest version.")
+                        print(t("init.newest_error"))
                         return False
                 index = int(choice) - 1
                 if 0 <= index < len(cores):
                     selected_core = cores[index]
-                    print(f"Selected: {selected_core['name']} (Version: {selected_core['version']})")
+                    print(t("init.selected_core", name=selected_core['name'], version=selected_core['version']))
                     shutil.copy2(selected_core['path'], SERVER_JAR)
-                    print(f"Copied {selected_core['name']} to core.jar")
+                    print(t("init.copied_core", name=selected_core['name']))
                     return True
                 else:
-                    print(f"Please enter a number between 1 and {len(cores)}")
+                    print(t("init.enter_number_between", max=len(cores)))
             except ValueError:
-                print("Please enter a valid number or leave blank for newest.")
+                print(t("init.valid_number_blank"))
             except Exception as e:
-                print(f"Error selecting server core: {e}")
+                print(t("init.select_core_error", error=e))
                 return False
 
 
 def init_config(prefill_version=None):
     logger.info("Starting manual server initialization")
     print("=" * 50)
-    print("         Minecraft Server Initialization")
+    print(t("init.title").center(50))
     print("=" * 50)
     if CONFIG_FILE.exists():
         logger.warning("Configuration file already exists, will be overwritten")
-        print("\nConfiguration file already exists!")
-        print("This will replace your current configuration.")
+        print("\n" + t("init.config_exists"))
+        print(t("init.config_will_replace"))
         confirm = input("\nDo you want to continue? (y/N): ").strip().upper() or "N"
         if confirm != "Y":
             logger.info("User cancelled initialization, existing configuration preserved")
-            print("\nOperation canceled.\nExisting configuration preserved.\n")
+            print("\n" + t("init.config_preserved") + "\n")
             return
     logger.info("Checking for server core files...")
-    print("\nChecking for server core files...")
+    print("\n" + t("init.checking_cores") + "...")
     core_result = detect_server_cores()
     if core_result is True:
         logger.info("Server core already exists as core.jar")
@@ -467,21 +464,21 @@ def init_config(prefill_version=None):
         logger.info(f"Found {len(core_result)} server core(s)")
         if not select_server_core(core_result, auto_mode=False):
             logger.error("Failed to select server core in manual initialization")
-            print("Failed to select server core. Please check your JAR files.")
+            print(t("init.select_failed"))
             return
         else:
             logger.info("Successfully selected server core")
     elif core_result is False:
         logger.error("No valid server cores found for manual initialization")
-        print("No valid server cores found.")
-        print("Please make sure you have server JAR files in the current directory.")
+        print(t("init.no_valid_core_manual"))
+        print(t("init.jar_hint"))
         return
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     config = configparser.ConfigParser()
     version = prefill_version
     if prefill_version:
         logger.info(f"Using prefill version: {version}")
-        print(f"\nUsing version: {version}")
+        print("\n" + t("init.using_version", version=version))
     else:
         detected_version = "unknown"
         if SERVER_JAR.exists():
@@ -495,7 +492,7 @@ def init_config(prefill_version=None):
                 logger.warning(f"Could not detect version from core.jar: {e}")
         if detected_version != "unknown":
             logger.info(f"Detected server version: {detected_version}")
-            print(f"\nDetected server version: {detected_version}")
+            print("\n" + t("init.detected_version", version=detected_version))
             use_detected = input("Use this version? (Y/n): ").strip().upper() or "Y"
             if use_detected == "Y":
                 version = detected_version
@@ -508,7 +505,7 @@ def init_config(prefill_version=None):
                         logger.info(f"User entered version: {version}")
                         break
                     logger.warning(f"Invalid version format entered: {version}")
-                    print("Invalid version format. Use format like 1.21.5 or 1.21")
+                    print(t("init.invalid_version"))
         else:
             logger.warning("Could not detect version from core.jar")
             while True:
@@ -517,7 +514,7 @@ def init_config(prefill_version=None):
                     logger.info(f"User entered version: {version}")
                     break
                 logger.warning(f"Invalid version format entered: {version}")
-                print("Invalid version format. Use format like 1.21.5 or 1.21")
+                print(t("init.invalid_version"))
     while True:
         ram_input = input("\nSet maximum RAM (e.g., 4096 for 4GB, or 4 for 4GB): ").strip()
         if ram_input.isdigit():
@@ -525,12 +522,12 @@ def init_config(prefill_version=None):
             if ram_value < 256:
                 max_ram = ram_value * 1024
                 logger.info(f"Converted {ram_value} GB to {max_ram} MB")
-                print(f"Converted {ram_value} GB to {max_ram} MB")
+                print(t("init.converted_gb", gb=ram_value, mb=max_ram))
             else:
                 max_ram = ram_value
             if max_ram < 512:
                 logger.warning(f"Low RAM allocation requested: {max_ram} MB")
-                print("Warning: Allocating less than 512MB may cause server instability!")
+                print(t("init.low_ram_warning"))
                 confirm = input("Continue anyway? (y/N): ").strip().upper() or "N"
                 if confirm == "Y":
                     logger.info("User confirmed low RAM allocation")
@@ -541,11 +538,11 @@ def init_config(prefill_version=None):
                 break
         else:
             logger.warning(f"Invalid RAM input: {ram_input}")
-            print("Invalid RAM size. Must be a positive integer")
+            print(t("init.invalid_ram"))
     logger.info(f"RAM allocation set to: {max_ram} MB")
-    print(f"\nAllocated RAM: {max_ram} MB ({max_ram/1024:.1f} GB)")
-    print("\nYou can add additional files/directories to exclude from backups.")
-    print("These will be added to the base exclusion list.")
+    print("\n" + t("init.allocated_ram", mb=max_ram, gb=max_ram/1024))
+    print("\n" + t("init.additional_exclude"))
+    print(t("init.exclude_hint"))
     additional_exclude = input("Enter additional exclusions (comma-separated, leave empty if none): ").strip()
     if additional_exclude:
         logger.info(f"Additional exclusions entered: {additional_exclude}")
@@ -557,7 +554,7 @@ def init_config(prefill_version=None):
         java_installations = find_java_installations()
         if not java_installations:
             logger.error("No Java installations found!")
-            print("Error: No Java installations found! Please install Java first.\n")
+            print(t("init.no_java") + "\n")
             sys.exit(1)
         logger.info(f"Found {len(java_installations)} Java installations")
         print("\n" + format_java_table(java_installations))
@@ -569,20 +566,20 @@ def init_config(prefill_version=None):
                     custom_path = input("\nEnter Java path (can be Java home or bin directory): ").strip()
                     if not custom_path:
                         logger.warning("No custom Java path entered")
-                        print("No path entered. Please try again.")
+                        print(t("init.no_path"))
                         continue
                     logger.info(f"Validating custom Java path: {custom_path}")
-                    print("Validating Java...")
+                    print(t("init.validating_java") + "...")
                     validated_path = validate_java_path(custom_path)
                     if validated_path:
                         java_path = validated_path
                         logger.info(f"Custom Java path validated successfully: {java_path}")
-                        print("Validated successfully.")
+                        print(t("init.validated"))
                         break
                     else:
                         logger.warning(f"Invalid custom Java path: {custom_path}")
-                        print("Invalid Java path or Java not found. Please check the path and try again.")
-                        print("Make sure the path points to a valid Java installation.")
+                        print(t("init.invalid_java"))
+                        print(t("init.java_hint2"))
                         continue
                 else:
                     choice_num = int(choice)
@@ -591,12 +588,12 @@ def init_config(prefill_version=None):
                         logger.info(f"Selected Java installation: {java_path}")
                         break
                     logger.warning(f"Invalid Java selection: {choice}")
-                    print("Invalid selection.")
+                    print(t("init.invalid_selection"))
             except ValueError:
                 logger.error("Invalid input for Java selection")
-                print("Please enter a number.")
-    print("\nYou can add additional server parameters (e.g., -nogui, --force-upgrade, etc.)")
-    print("These will be appended after the default parameters.")
+                print(t("init.enter_number"))
+    print("\n" + t("init.additional_params"))
+    print(t("init.params_hint"))
     additional_params = input("Enter additional parameters (leave empty if none): ").strip()
     if additional_params:
         logger.info(f"Additional parameters entered: {additional_params}")
@@ -622,24 +619,24 @@ def init_config(prefill_version=None):
         with open(CONFIG_FILE, "w") as f:
             config.write(f)
         logger.info(f"Configuration saved to {CONFIG_FILE}")
-        print(f"\nConfiguration saved to {CONFIG_FILE}")
+        print("\n" + t("init.config_saved", path=CONFIG_FILE))
         show_info()
     except Exception as e:
         logger.error(f"Failed to save configuration: {e}")
-        print(f"Error saving configuration: {e}\n")
+        print(t("init.save_error", error=e) + "\n")
 
 
 def init_config_auto(prefill_version=None):
     logger.info("Starting automatic server initialization")
     start_time = time.time()
     print("=" * 50)
-    print("         Automatic Server Initialization")
+    print(t("init.title_auto").center(50))
     print("=" * 50)
     if CONFIG_FILE.exists():
         logger.info("Configuration file already exists, will be overwritten")
-        print("\nConfiguration file already exists. Overwriting...")
+        print("\n" + t("init.auto_overwrite") + "...")
     logger.info("Checking for server core files...")
-    print("\nChecking for server core files...")
+    print("\n" + t("init.checking_cores") + "...")
     core_result = detect_server_cores()
     if core_result is True:
         logger.info("Server core already exists as core.jar")
@@ -648,15 +645,15 @@ def init_config_auto(prefill_version=None):
         logger.info(f"Found {len(core_result)} server core(s), auto-selecting...")
         if not select_server_core(core_result, auto_mode=True):
             logger.error("Failed to auto-select server core")
-            print("Failed to auto-select server core.")
+            print(t("init.auto_select_failed"))
             return
         else:
             logger.info("Successfully auto-selected server core")
     elif core_result is False:
         logger.error("No valid server cores found")
-        print("No valid server cores found.")
-        print("Please make sure you have server JAR files in the current directory.")
-        print("The JAR files should contain a version.json file to be recognized as server cores.")
+        print(t("init.no_valid_core_manual"))
+        print(t("init.jar_hint"))
+        print(t("init.auto_jar_hint"))
         return
     CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
     config = configparser.ConfigParser()
@@ -686,18 +683,18 @@ def init_config_auto(prefill_version=None):
             logger.warning(f"Could not detect Java requirement, defaulting to Java {java_required}")
     if version != "unknown":
         logger.info(f"Using detected version: {version}")
-        print(f"\nUsing detected version from core.jar: {version}")
+        print("\n" + t("init.using_detected", version=version))
     else:
         logger.warning(f"Could not detect version from core.jar, using: {version}")
-        print(f"\nCould not detect version from core.jar, using: {version}")
-    print(f"Required Java version: {java_required}")
+        print("\n" + t("init.cannot_detect", version=version))
+    print(t("init.required_java", java=java_required))
     logger.info(f"Finding Java installations (required: Java {java_required})")
     java_installations = find_java_installations()
     available_versions = [int(j['version']) for j in java_installations if j['version'].isdigit()]
     java_path = None
     if not available_versions:
         logger.warning("No Java installations found!")
-        print("\nNo Java installations found!")
+        print("\n" + t("init.no_java_auto") + "!")
         custom = input("Would you like to specify a custom Java path? (y/N): ").strip().upper() or "N"
         if custom == "Y":
             while True:
@@ -709,10 +706,10 @@ def init_config_auto(prefill_version=None):
                     break
                 else:
                     logger.warning(f"Invalid Java path: {custom_path}")
-                    print("Invalid path. Try again.")
+                    print(t("init.invalid_path_auto"))
         else:
             logger.error("No Java available, exiting auto initialization")
-            print("Exiting auto initialization.")
+            print(t("init.exiting_auto"))
             return
     else:
         logger.info(f"Found {len(java_installations)} Java installation(s)")
@@ -731,25 +728,25 @@ def init_config_auto(prefill_version=None):
                     break
         if not java_path:
             logger.error(f"No suitable Java version found (required: {java_required})")
-            print(f"No suitable Java version found up to Java {test_ver}.")
-            print("Exiting auto initialization.")
+            print(t("init.no_suitable_java", version=test_ver))
+            print(t("init.exiting_auto"))
             return
     logger.info("Detecting available memory...")
-    print("\nDetecting available memory...")
+    print("\n" + t("init.detecting_memory") + "...")
     total_mem_bytes = get_total_memory()
     total_mem_gb = total_mem_bytes / (1024 ** 3)
     total_mem_mb = total_mem_gb * 1024
     is_container = is_running_in_container()
     if is_container:
         logger.info("Running in container environment")
-        print(" - Running in container environment")
+        print(t("init.running_container"))
     logger.info(f"Total available memory: {total_mem_mb:.0f} MB ({total_mem_gb:.1f} GB)")
-    print(f"Total available memory: {total_mem_mb:.0f} MB ({total_mem_gb:.1f} GB)")
+    print(t("init.total_memory", mb=total_mem_mb, gb=total_mem_gb))
     if total_mem_mb < 512:
         logger.error(f"Insufficient memory: {total_mem_mb:.0f} MB (< 512 MB)")
-        print("\nERROR: Available memory is less than 512MB.")
-        print("The server will likely crash due to insufficient memory.")
-        print("Please use manual initialization (--init) to allocate memory carefully.")
+        print("\n" + t("init.low_memory_error"))
+        print(t("init.low_memory_hint"))
+        print(t("init.manual_init_hint"))
         return
     if total_mem_mb <= 8192:
         base_ram_mb = (29 * total_mem_mb + 8192) / 60
@@ -757,7 +754,7 @@ def init_config_auto(prefill_version=None):
     else:
         base_ram_mb = 4096
     logger.info(f"Base allocation calculated: {base_ram_mb} MB")
-    print(f"Base allocation: {base_ram_mb} MB")
+    print(t("init.base_allocation", mb=base_ram_mb))
     plugins_ram_mb = 0
     plugins_dir = BASE_DIR / "plugins"
     if plugins_dir.exists():
@@ -766,10 +763,10 @@ def init_config_auto(prefill_version=None):
         total_plugins = len(enabled_plugins) + len(disabled_plugins)
         enabled_count = len(enabled_plugins)
         logger.info(f"Found {enabled_count} enabled plugins out of {total_plugins} total")
-        print(f"\nAnalyzing {enabled_count} enabled plugins:")
+        print("\n" + t("init.analyzing_plugins", count=enabled_count))
         plugins_ram_mb = calculate_plugins_memory(enabled_plugins)
         logger.info(f"Plugins memory allocation: {plugins_ram_mb} MB")
-        print(f"Total plugins allocation: {plugins_ram_mb} MB")
+        print(t("init.plugins_allocation", mb=plugins_ram_mb))
     max_players = 20
     view_distance = 10
     if SERVER_PROPERTIES.exists():
@@ -792,22 +789,22 @@ def init_config_auto(prefill_version=None):
             logger.warning(f"Error reading server.properties: {e}")
     players_ram_mb, player_details = calculate_players_memory(max_players, view_distance)
     logger.info(f"Players memory allocation: {players_ram_mb:.1f} MB (max_players={max_players}, view_distance={view_distance})")
-    print(f"\nPlayer allocation details:")
-    print(f" - Estimated players: {player_details['estimated_players']}")
-    print(f" - View distance: {player_details['view_distance']}")
-    print(f" - Multiplier: {player_details['memory_multiplier']}")
-    print(f" - Total allocation: {players_ram_mb:.1f} MB")
+    print("\n" + t("init.player_details"))
+    print(t("init.estimated_players", count=player_details['estimated_players']))
+    print(t("init.view_distance", distance=player_details['view_distance']))
+    print(t("init.multiplier", multiplier=player_details['memory_multiplier']))
+    print(t("init.players_allocation", mb=players_ram_mb))
     total_allocated_mb = base_ram_mb + plugins_ram_mb + players_ram_mb
     logger.info(f"Total memory allocation before validation: {total_allocated_mb:.1f} MB")
-    print(f"\nMemory allocation breakdown:")
-    print(f" - Base: {base_ram_mb} MB")
-    print(f" - Plugins: {plugins_ram_mb} MB")
-    print(f" - Players: {players_ram_mb:.1f} MB")
-    print(f" - Total: {total_allocated_mb:.1f} MB")
+    print("\n" + t("init.breakdown"))
+    print(t("init.base", mb=base_ram_mb))
+    print(t("init.plugins", mb=plugins_ram_mb))
+    print(t("init.players", mb=players_ram_mb))
+    print(t("init.total", mb=total_allocated_mb))
     total_allocated_mb = validate_memory_allocation(total_mem_mb, total_allocated_mb, is_container)
     final_ram_mb = int(total_allocated_mb)
     logger.info(f"Final allocated RAM after validation: {final_ram_mb} MB")
-    print(f"\nFinal allocated RAM: {final_ram_mb} MB ({final_ram_mb/1024:.1f} GB)")
+    print("\n" + t("init.final_ram", mb=final_ram_mb, gb=final_ram_mb/1024))
     device_id = get_device_id()
     logger.info(f"Generated device ID: {device_id}")
     config["SERVER"] = {
@@ -821,11 +818,11 @@ def init_config_auto(prefill_version=None):
     with open(CONFIG_FILE, "w") as f:
         config.write(f)
     logger.info(f"Auto configuration saved to {CONFIG_FILE}")
-    print(f"\nAuto configuration saved to {CONFIG_FILE}")
+    print("\n" + t("init.auto_saved", path=CONFIG_FILE))
     show_info()
     elapsed_time = time.time() - start_time
     logger.info(f"Auto initialization completed in {elapsed_time:.2f}s")
-    print(f"Auto initialization completed in {elapsed_time:.2f}s!\n")
+    print(t("init.auto_completed", time=f"{elapsed_time:.2f}") + "!\n")
 
 
 def find_java_installations():
@@ -1005,22 +1002,19 @@ _config_mtime = 0
 
 def standardize_server_structure():
     if not create_lock(["--standardize"]):
-        print("\nError: Another task is currently running.\n")
+        print("\n" + t("init.lock_busy") + "\n")
         logger.warning("Failed to acquire task lock, another task running")
         return
     try:
         print("\n" + "=" * 43)
-        print("       Server Structure Standardizer")
+        print(t("init.standardize_title").center(43))
         print("=" * 43)
-        print("\nThis action will standardize your server")
-        print("files to make it managable by the manager.\n")
-        print("You should backup your files before this")
-        print("action, the standardizer is only designed")
-        print("for normal Minecraft server file structure.\n")
+        print("\n" + t("init.standardize_desc1"))
+        print(t("init.standardize_desc2"))
         choice = input("Would you like to continue? (y/N): ").strip().upper() or "N"
         logger.info(f"User confirmation input: {choice}")
         if choice != "Y":
-            print("\nOperation cancelled.\n")
+            print("\n" + t("init.standardize_cancelled") + "\n")
             logger.info("User cancelled standardization")
             remove_lock()
             return
@@ -1037,7 +1031,7 @@ def standardize_server_structure():
         ]
         config_dir = BASE_DIR / "config"
         moved_any_config = False
-        print("\nMoving config files...")
+        print("\n" + t("init.moving_config") + "...")
         logger.info("Starting config file standardization")
         config_dir.mkdir(exist_ok=True)
         logger.info("Ensured config directory exists")
@@ -1047,14 +1041,14 @@ def standardize_server_structure():
             if src.exists():
                 try:
                     shutil.move(str(src), str(dst))
-                    print(f" - Moved {filename}")
+                    print(t("init.moved", name=filename))
                     logger.info(f"Moved config file: {filename}")
                     moved_any_config = True
                 except Exception as e:
-                    print(f" - Failed to move {filename}: {e}")
+                    print(t("init.move_failed", name=filename, error=e))
                     logger.warning(f"Failed to move config file {filename}: {e}")
         if not moved_any_config:
-            print(" - No config files needed moving")
+            print(t("init.no_config_moved"))
             logger.info("No config files required moving")
         worlds_dir = BASE_DIR / "worlds"
         world_candidates = [
@@ -1063,7 +1057,7 @@ def standardize_server_structure():
             and d.name.startswith("world")
             and d.name != "worlds"
         ]
-        print("\nMoving worlds...")
+        print("\n" + t("init.moving_worlds") + "...")
         logger.info("Starting world directory standardization")
         if world_candidates:
             worlds_dir.mkdir(exist_ok=True)
@@ -1071,29 +1065,29 @@ def standardize_server_structure():
             for world in world_candidates:
                 try:
                     shutil.move(str(world), str(worlds_dir / world.name))
-                    print(f" - Moved {world.name}")
+                    print(t("init.moved_world", name=world.name))
                     logger.info(f"Moved world directory: {world.name}")
                 except Exception as e:
-                    print(f" - Failed to move {world.name}: {e}")
+                    print(t("init.move_world_failed", name=world.name, error=e))
                     logger.warning(f"Failed to move world directory {world.name}: {e}")
         else:
-            print(" - No worlds found")
+            print(t("init.no_worlds_found"))
             logger.info("No world directories detected")
         bundles_dir = BASE_DIR / "bundles"
         if not bundles_dir.exists():
             bundles_dir.mkdir()
-            print("\nCreated bundles directory")
+            print("\n" + t("init.created_bundles"))
             logger.info("Created bundles directory")
         else:
             logger.info("Bundles directory already exists")
-        print("\nDetecting cores...\n")
+        print("\n" + t("init.detecting_cores") + "...\n")
         logger.info("Detecting server core jar files")
         jar_files = [
             f for f in BASE_DIR.iterdir()
             if f.is_file() and f.suffix == ".jar"
         ]
         if not jar_files:
-            print("No .jar files found.")
+            print(t("init.no_jar_files"))
             logger.warning("No jar files detected in base directory")
         elif len(jar_files) == 1:
             jar = jar_files[0]

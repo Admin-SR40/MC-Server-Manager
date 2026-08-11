@@ -30,6 +30,7 @@ get_device_id = None
 get_uptime = None
 SCRIPT_VERSION = None
 _ctx = None
+t = None
 
 
 def bind(ctx):
@@ -44,6 +45,7 @@ def bind(ctx):
     get_uptime = ctx.get_uptime
     SCRIPT_VERSION = ctx.SCRIPT_VERSION
     _ctx = ctx
+    t = ctx.t
 
 
 def dispatch(args, ctx):
@@ -58,9 +60,9 @@ def analyze_server_crash(exit_code, uptime_str=None):
     if uptime_str:
         uptime_display = uptime_str
     if exit_code == 0:
-        print("        POTENTIAL CRASH DETECTED FROM LOGS")
+        print(t("crash.potential").center(50))
     else:
-        print("                  CRASH DETECTED")
+        print(t("crash.detected").center(50))
     print("=" * 50)
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     if exit_code == 0:
@@ -68,21 +70,21 @@ def analyze_server_crash(exit_code, uptime_str=None):
     else:
         report_file = BASE_DIR / f"crash_{timestamp}.txt"
     log_file = BASE_DIR / "logs" / "latest.log"
-    print(f"\nExit Code: {exit_code}")
-    print(f"Server Uptime: {uptime_display}")
-    print(f"Crash Time: {crash_time}")
-    print(f"Log File: {log_file}")
-    print(f"Report File: {report_file}")
+    print("\n" + t("crash.exit_code", code=exit_code))
+    print(t("crash.uptime", uptime=uptime_display))
+    print(t("crash.crash_time", time=crash_time))
+    print(t("crash.log_file", path=log_file))
+    print(t("crash.report_file", path=report_file))
     analysis_data = collect_crash_data(log_file, exit_code, uptime_display, crash_time)
     generate_crash_report(report_file, analysis_data, log_file, exit_code, uptime_display, crash_time)
     if exit_code == 0:
-        print("\nNote: This is a potential crash detected from log analysis.")
-        print("The server exited with code 0 but showed error indicators.\n")
+        print("\n" + t("crash.potential_note"))
+        print(t("crash.potential_note2") + "\n")
     else:
-        print("\nPlease check the crash report for details about the server crash.\n")
+        print("\n" + t("crash.check_report") + "\n")
     elapsed_time = time.time() - start_time
     logger.info(f"Crash analysis completed in {elapsed_time:.2f}s, report: {report_file}")
-    print(f"Crash analysis completed in {elapsed_time:.2f}s!\n")
+    print(t("crash.completed", time=f"{elapsed_time:.2f}") + "!\n")
 
 
 def collect_crash_data(log_file, exit_code, uptime_str=None, crash_time_str=None):
@@ -102,7 +104,7 @@ def collect_crash_data(log_file, exit_code, uptime_str=None, crash_time_str=None
                 data['log_lines'] = f.readlines()
         except Exception as e:
             logger.error(f"Could not read log file: {e}")
-            print(f"Warning: Could not read log file: {e}")
+            print(t("crash.read_log_warning", error=e))
             data['log_lines'] = []
     logger.info(f"Collected {len(data['log_lines'])} log lines")
     analyze_log_content(data)
@@ -217,14 +219,14 @@ def analyze_plugin_dependencies(data):
                 if soft_deps_missing:
                     missing_soft_deps[plugin['name']] = soft_deps_missing
             except Exception as e:
-                print(f"Error analyzing dependencies for {plugin['name']}: {e}")
+                print(t("crash.dep_error", name=plugin['name'], error=e))
                 continue
         data['plugin_dependencies'] = {
             'missing_hard': missing_hard_deps,
             'missing_soft': missing_soft_deps
         }
     except Exception as e:
-        print(f"Error in plugin dependency analysis: {e}")
+        print(t("crash.dep_analysis_error", error=e))
         data['plugin_dependencies'] = {
             'missing_hard': {},
             'missing_soft': {}
@@ -504,11 +506,11 @@ def generate_crash_report(report_file, data, log_file, exit_code, uptime_display
             logger.info("Crash report generation completed successfully")
     except IOError as e:
         logger.error(f"IOError writing crash report to {report_file}: {e}")
-        print(f"Error writing crash report: {e}\n")
+        print(t("crash.write_report_error", error=e) + "\n")
         traceback.print_exc()
     except Exception as e:
         logger.error(f"Unexpected error generating crash report: {e}", exc_info=True)
-        print(f"Error generating crash report: {e}\n")
+        print(t("crash.generate_report_error", error=e) + "\n")
         traceback.print_exc()
 
 
@@ -544,41 +546,41 @@ def check_logs_for_errors():
         return False
     except Exception as e:
         logger.error(f"Error reading log file: {e}")
-        print(f"Error reading log file: {e}\n")
+        print(t("crash.read_log_error", error=e) + "\n")
         return False
 
 
 def ask_user_for_crash_analysis():
     print("\n" + "=" * 61)
-    print("               POSSIBLE CRASH DETECTED IN LOGS")
+    print(t("crash.possible_title").center(61))
     print("=" * 61)
     uptime_seconds, uptime_str, crash_time = get_uptime()
     if uptime_seconds >= 60:
-        print(f"\nServer Uptime: {uptime_str} (or {int(uptime_seconds)} seconds)")
+        print("\n" + t("crash.uptime_seconds", uptime=uptime_str, seconds=int(uptime_seconds)))
     else:
-        print(f"\nServer Uptime: {uptime_str}")
-    print(f"Crash Time: {crash_time}")
-    print("\nWarning: The server exited normally (return code 0),")
-    print("but potential crash/error indicators were found in the logs.")
-    print("\nThis could indicate:")
-    print(" - Out of memory issues")
-    print(" - Plugin conflicts or errors")
-    print(" - World corruption")
-    print(" - Other runtime problems")
+        print("\n" + t("crash.uptime", uptime=uptime_str))
+    print(t("crash.crash_time", time=crash_time))
+    print("\n" + t("crash.possible_warning1"))
+    print(t("crash.possible_warning2"))
+    print("\n" + t("crash.could_indicate"))
+    print(t("crash.indicate_oom"))
+    print(t("crash.indicate_plugin"))
+    print(t("crash.indicate_world"))
+    print(t("crash.indicate_other"))
     while True:
-        print("\nDo you want to analyze the logs for potential issues?")
-        print(" Y - Yes, analyze the logs and generate a crash report")
-        print(" N - No, ignore the warnings and exit normally")
+        print("\n" + t("crash.analyze_ask"))
+        print(t("crash.analyze_yes"))
+        print(t("crash.analyze_no"))
         choice = input("\nEnter your choice (y/N): ").strip().upper() or "N"
         if choice == 'Y':
             logger.info("User requested crash analysis after normal exit")
             return True
         elif choice == 'N':
             logger.info("User skipped crash analysis after normal exit")
-            print("\nContinuing without analysis...")
+            print("\n" + t("crash.continuing") + "...")
             return False
         else:
-            print("Please enter Y or N.")
+            print(t("crash.enter_yn"))
 
 
 def handle_server_crash(process, uptime_str=None):
@@ -594,32 +596,32 @@ def handle_server_crash(process, uptime_str=None):
 
 def ask_user_for_interrupt_analysis():
     print("\n" + "=" * 60)
-    print("       SERVER INTERRUPTED - POTENTIAL ISSUES DETECTED")
+    print(t("crash.interrupted_title").center(60))
     print("=" * 60)
     uptime_seconds, uptime_str, crash_time = get_uptime()
     if uptime_seconds >= 60:
-        print(f"\nServer Uptime: {uptime_str} (or {int(uptime_seconds)} seconds)")
+        print("\n" + t("crash.uptime_seconds", uptime=uptime_str, seconds=int(uptime_seconds)))
     else:
-        print(f"\nServer Uptime: {uptime_str}")
-    print(f"Interrupt Time: {crash_time}")
-    print("\nThe server was interrupted by user (CTRL+C),")
-    print("but potential issues were detected in the logs.")
-    print("\nThis could indicate:")
-    print(" - Server was unresponsive and required force quit")
-    print(" - Memory issues causing server to hang")
-    print(" - Plugin conflicts preventing normal shutdown")
-    print(" - World corruption or loading problems")
+        print("\n" + t("crash.uptime", uptime=uptime_str))
+    print(t("crash.interrupt_time", time=crash_time))
+    print("\n" + t("crash.interrupt_warning1"))
+    print(t("crash.interrupt_warning2"))
+    print("\n" + t("crash.could_indicate"))
+    print(t("crash.indicate_hang"))
+    print(t("crash.indicate_memory"))
+    print(t("crash.indicate_shutdown"))
+    print(t("crash.indicate_world_load"))
     while True:
-        print("\nDo you want to analyze the logs for potential issues?")
-        print(" Y - Yes, analyze the logs and generate a crash report")
-        print(" N - No, this was an intentional interrupt")
+        print("\n" + t("crash.analyze_ask"))
+        print(t("crash.analyze_yes"))
+        print(t("crash.analyze_no_interrupt"))
         choice = input("\nEnter your choice (y/N): ").strip().upper() or "N"
         if choice == 'Y':
             logger.info("User requested interrupt analysis")
             return True
         elif choice == 'N':
             logger.info("User skipped interrupt analysis")
-            print("\nContinuing without analysis...")
+            print("\n" + t("crash.continuing") + "...")
             return False
         else:
-            print("Please enter Y or N.")
+            print(t("crash.enter_yn"))

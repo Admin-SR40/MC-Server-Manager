@@ -16,9 +16,9 @@ MODULE = {
     "description": "Version snapshots, backups and rollback",
     "requires": [],
     "commands": {
-        "--save <ver>": "Save current server as a named version",
-        "--backup": "Create a timestamped backup",
-        "--rollback": "Rollback to a previous backup",
+        "--save <ver>": "cmd.save",
+        "--backup": "cmd.backup",
+        "--rollback": "cmd.rollback",
     },
 }
 
@@ -34,12 +34,13 @@ format_file_size = None
 safe_rmtree = None
 _unlock_with_logging = None
 _ctx = None
+t = None
 
 
 def bind(ctx):
     global BASE_DIR, BUNDLES_DIR, CONFIG_FILE, logger
     global create_lock, remove_lock, load_config, get_exclude_list
-    global format_file_size, safe_rmtree, _unlock_with_logging, _ctx
+    global format_file_size, safe_rmtree, _unlock_with_logging, _ctx, t
     BASE_DIR = ctx.BASE_DIR
     BUNDLES_DIR = ctx.BUNDLES_DIR
     CONFIG_FILE = ctx.CONFIG_FILE
@@ -52,6 +53,7 @@ def bind(ctx):
     safe_rmtree = ctx.safe_rmtree
     _unlock_with_logging = ctx.unlock_with_logging
     _ctx = ctx
+    t = ctx.t
 
 
 def dispatch(args, ctx):
@@ -68,12 +70,12 @@ def dispatch(args, ctx):
 def save_version(version):
     if not version:
         logger.error("No version specified in save_version")
-        print("Usage: --save <version>")
+        print(t("backup.usage_save"))
         return
     logger.info(f"Starting save_version function for version: {version}")
     if not create_lock(["--save", version]):
         logger.error("Failed to create lock for save_version operation")
-        print("\nError: Could not create task lock\n")
+        print("\n" + t("backup.lock_error") + "\n")
         return
     try:
         logger.info(f"Attempting to load configuration for save_version {version}")
@@ -83,14 +85,14 @@ def save_version(version):
     except:
         logger.error("Failed to load configuration, using default version 'unknown'")
         current_version = "unknown"
-        print("Warning: Could not load config, using default version 'unknown'")
+        print(t("backup.config_warning"))
     target_dir = BUNDLES_DIR / version
     logger.info(f"Target directory for version {version}: {target_dir}")
     target_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Ensured target directory exists: {target_dir}")
     zip_path = target_dir / "server.zip"
     logger.info(f"Zip file path: {zip_path}")
-    print(f"\nSaving current version ({current_version}) as {version}...")
+    print("\n" + t("backup.saving_as", current=current_version, version=version) + "...")
     logger.info(f"Saving current version {current_version} as {version}")
     temp_dir = BASE_DIR / "temp_save"
     logger.info(f"Temporary directory for save operation: {temp_dir}")
@@ -136,11 +138,11 @@ def save_version(version):
                         logger.info(f"Added {zip_file_count} files to ZIP archive")
         zip_size = os.path.getsize(zip_path)
         logger.info(f"ZIP archive created successfully: {zip_path}, size: {format_file_size(zip_size)}, files: {zip_file_count}")
-        print(f"Version {version} saved successfully to {zip_path}\n")
+        print(t("backup.saved", version=version, path=zip_path) + "\n")
         logger.info(f"Version {version} saved successfully")
     except Exception as e:
         logger.error(f"Error saving version: {e}", exc_info=True)
-        print(f"Error saving version: {e}\n")
+        print(t("backup.error_saving", error=e) + "\n")
         traceback.print_exc()
     finally:
         if temp_dir.exists():
@@ -157,7 +159,7 @@ def backup_version():
     logger.info("Starting backup_version function")
     if not create_lock(["--backup"]):
         logger.error("Failed to create lock for backup operation")
-        print("\nError: Could not create task lock\n")
+        print("\n" + t("backup.lock_error") + "\n")
         return
     try:
         logger.info("Attempting to load configuration for backup_version")
@@ -166,7 +168,7 @@ def backup_version():
         logger.info(f"Current server version from config: {version}")
     except Exception as e:
         logger.error(f"Failed to load configuration: {e}")
-        print("Error: Could not load configuration to determine current version\n")
+        print(t("backup.config_error") + "\n")
         remove_lock()
         return
     target_dir = BUNDLES_DIR / version
@@ -177,7 +179,7 @@ def backup_version():
     zip_name = f"{version}_{timestamp}.zip"
     zip_path = target_dir / zip_name
     logger.info(f"Backup zip file path: {zip_path}")
-    print(f"\nCreating backup of current version ({version})...")
+    print("\n" + t("backup.creating_backup", version=version) + "...")
     logger.info(f"Creating backup of current version {version}")
     temp_dir = BASE_DIR / "temp_backup"
     logger.info(f"Temporary directory for backup operation: {temp_dir}")
@@ -224,11 +226,11 @@ def backup_version():
                         logger.info(f"Added {zip_file_count} files to ZIP archive")
         zip_size = os.path.getsize(zip_path)
         logger.info(f"ZIP archive created successfully: {zip_path}, size: {format_file_size(zip_size)}, files: {zip_file_count}")
-        print(f"Backup created successfully: {zip_path}\n")
+        print(t("backup.backup_created", path=zip_path) + "\n")
         logger.info(f"Backup created successfully: {zip_path}")
     except Exception as e:
         logger.error(f"Error creating backup: {e}", exc_info=True)
-        print(f"Error creating backup: {e}\n")
+        print(t("backup.error_backup", error=e) + "\n")
         traceback.print_exc()
     finally:
         if temp_dir.exists():
@@ -261,7 +263,7 @@ def rollback_version():
     logger.info("Starting rollback_version function")
     if not create_lock(["--rollback"]):
         logger.error("Failed to create lock for rollback operation")
-        print("\nError: Could not create task lock\n")
+        print("\n" + t("backup.lock_error") + "\n")
         return
     try:
         logger.info("Loading configuration for current version")
@@ -270,14 +272,14 @@ def rollback_version():
         logger.info(f"Current server version: {current_version}")
     except Exception as e:
         logger.error(f"Failed to load configuration: {e}")
-        print("Error: Could not load configuration to determine current version\n")
+        print(t("backup.config_error") + "\n")
         remove_lock()
         return
     backup_dir = BUNDLES_DIR / current_version
     logger.info(f"Backup directory: {backup_dir}")
     if not backup_dir.exists():
         logger.warning(f"Backup directory does not exist: {backup_dir}")
-        print(f"\nNo backups found for version {current_version}")
+        print("\n" + t("backup.no_backups", version=current_version))
         print("")
         remove_lock()
         return
@@ -285,13 +287,13 @@ def rollback_version():
     logger.info(f"Found {len(backup_files)} backup files in directory")
     if not backup_files:
         logger.warning(f"No backup files found in directory: {backup_dir}")
-        print(f"\nNo backup files found for version {current_version}")
+        print("\n" + t("backup.no_backup_files", version=current_version))
         print("")
         remove_lock()
         return
     backup_files.sort(key=os.path.getmtime, reverse=True)
     logger.info(f"Sorted backup files by modification time (newest first)")
-    print("\nAvailable Backups:")
+    print("\n" + t("backup.available"))
     print("======================")
     backup_list = []
     for i, backup_file in enumerate(backup_files, 1):
@@ -307,20 +309,20 @@ def rollback_version():
         logger.info(f"User selection input: '{selection}'")
         if not selection:
             logger.info("User cancelled selection (empty input)")
-            print("No selection made.\n")
+            print(t("backup.no_selection") + "\n")
             remove_lock()
             return
         index = int(selection) - 1
         if index < 0 or index >= len(backup_list):
             logger.warning(f"Invalid selection index: {index}, valid range: 0-{len(backup_list)-1}")
-            print("Invalid selection.\n")
+            print(t("backup.invalid_selection") + "\n")
             remove_lock()
             return
         selected_file, friendly_name = backup_list[index]
         file_size = os.path.getsize(selected_file)
         logger.info(f"Selected backup: {selected_file.name} ({format_file_size(file_size)}), friendly name: {friendly_name}")
-        print(f"\nSelected file: {selected_file.name}")
-        print("Rolling back now, please wait...")
+        print("\n" + t("backup.selected", name=selected_file.name))
+        print(t("backup.rolling") + "...")
         temp_dir = BASE_DIR / "temp_rollback"
         logger.info(f"Temporary directory for extraction: {temp_dir}")
         if temp_dir.exists():
@@ -337,7 +339,7 @@ def rollback_version():
                 logger.info(f"Successfully extracted {file_count} files to temporary directory")
         except zipfile.BadZipFile as e:
             logger.error(f"Bad ZIP file error: {e}", exc_info=True)
-            print("Error: The backup file appears to be corrupted or not a valid ZIP archive\n")
+            print(t("backup.bad_zip") + "\n")
             if temp_dir.exists():
                 safe_rmtree(temp_dir)
                 logger.info("Cleaned up temporary directory after error")
@@ -345,7 +347,7 @@ def rollback_version():
             return
         except Exception as e:
             logger.error(f"Error extracting backup file: {e}", exc_info=True)
-            print(f"Error extracting backup file: {e}\n")
+            print(t("backup.extract_error", error=e) + "\n")
             if temp_dir.exists():
                 safe_rmtree(temp_dir)
                 logger.info("Cleaned up temporary directory after error")
@@ -353,7 +355,7 @@ def rollback_version():
             return
         if not temp_dir.exists() or not any(temp_dir.iterdir()):
             logger.error(f"Extraction failed or produced empty directory: {temp_dir}")
-            print("Error: Failed to extract backup file or backup is empty\n")
+            print(t("backup.empty_backup") + "\n")
             if temp_dir.exists():
                 safe_rmtree(temp_dir)
                 logger.info("Cleaned up empty temporary directory")
@@ -367,7 +369,7 @@ def rollback_version():
         logger.info(f"Exclude patterns: {exclude_list}")
         logger.info("Starting cleanup of current directory before rollback")
         if _ctx:
-            _ctx.preserve_modules_config()
+            _ctx.preserve_script_config()
         deleted_count = 0
         skipped_count = 0
         for item in BASE_DIR.iterdir():
@@ -417,13 +419,13 @@ def rollback_version():
             except Exception as e:
                 logger.warning(f"Failed to clean up temp_save directory: {e}")
         logger.info("Rollback completed successfully")
-        print("Server rollbacked successfully\n")
+        print(t("backup.rollback_success") + "\n")
     except ValueError:
         logger.error("Invalid input - expected a number")
-        print("Invalid input. Please enter a number.\n")
+        print(t("backup.invalid_input") + "\n")
     except KeyboardInterrupt:
         logger.warning("Rollback operation interrupted by user")
-        print("\nRollback interrupted by user.\n")
+        print("\n" + t("backup.interrupted") + "\n")
         temp_dir = BASE_DIR / "temp_rollback"
         if temp_dir.exists():
             try:
@@ -433,7 +435,7 @@ def rollback_version():
                 logger.error(f"Failed to clean up temporary directory after interrupt: {e}")
     except Exception as e:
         logger.error(f"Error during rollback: {e}", exc_info=True)
-        print(f"Error during rollback: {e}")
+        print(t("backup.rollback_error", error=e))
         traceback.print_exc()
         temp_dir = BASE_DIR / "temp_rollback"
         if temp_dir.exists():
@@ -444,5 +446,5 @@ def rollback_version():
                 logger.error(f"Failed to clean up temporary directory after error: {cleanup_error}")
     finally:
         if _ctx:
-            _ctx.restore_modules_config()
+            _ctx.restore_script_config()
         _unlock_with_logging("rollback")

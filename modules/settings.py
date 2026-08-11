@@ -11,20 +11,22 @@ MODULE = {
     "description": "Interactive editor for server.properties",
     "requires": [],
     "commands": {
-        "--settings": "Edit server properties and settings",
+        "--settings": "cmd.settings",
     },
 }
 
 BASE_DIR = None
 SERVER_PROPERTIES = None
 logger = None
+t = None
 
 
 def bind(ctx):
-    global BASE_DIR, SERVER_PROPERTIES, logger
+    global BASE_DIR, SERVER_PROPERTIES, logger, t
     BASE_DIR = ctx.BASE_DIR
     SERVER_PROPERTIES = ctx.SERVER_PROPERTIES
     logger = ctx.logger
+    t = ctx.t
 
 
 def dispatch(args, ctx):
@@ -36,15 +38,15 @@ def edit_server_settings():
     if not SERVER_PROPERTIES.exists():
         logger.error("Server properties file not found")
         print("\n" + "=" * 50)
-        print("          Server Configuration Editor")
+        print(t("settings.title").center(50))
         print("=" * 50)
-        print("\nError: server.properties file not found!")
-        print("Please start the server at least once to generate the file.")
+        print("\n" + t("settings.error_not_found"))
+        print(t("settings.hint_start"))
         print("")
         return
     logger.info("Starting server configuration editor")
     print("\n" + "=" * 50)
-    print("          Server Configuration Editor")
+    print(t("settings.title").center(50))
     print("=" * 50)
     properties = {}
     try:
@@ -59,7 +61,7 @@ def edit_server_settings():
         logger.info(f"Successfully read {len(properties)} properties from server.properties")
     except Exception as e:
         logger.error(f"Error reading server.properties: {e}")
-        print(f"Error reading server.properties: {e}")
+        print(t("settings.read_error", error=e))
         return
     settings_config = [
         {
@@ -170,16 +172,16 @@ def edit_server_settings():
     logger.info("Entering server configuration editor loop")
     edited_settings = []
     while True:
-        print("\n                    - Server Configuration -")
+        print("\n" + t("settings.table_title").center(45))
         print("╔" + "═" * 35 + "╦" + "═" * 26 + "╗")
-        print("║ Settings".ljust(35) + " ║ Value".ljust(25) + "   ║")
+        print("║ " + t("settings.col_setting").ljust(33) + " ║ " + t("settings.col_value").ljust(23) + " ║")
         print("╠" + "═" * 35 + "╬" + "═" * 26 + "╣")
         for i, setting in enumerate(settings_config, 1):
             key = setting['key']
             current_value = properties.get(key, setting['default'])
             if not current_value and setting['type'] == 'string':
-                current_value = "(empty)"
-            name_display = f"{i}. {setting['name']}"
+                current_value = t("settings.empty")
+            name_display = f"{i}. {t('settings.name.' + key)}"
             value_display = str(current_value)
             if len(name_display) > 34:
                 name_display = name_display[:31] + "..."
@@ -187,36 +189,36 @@ def edit_server_settings():
                 value_display = value_display[:21] + "..."
             print(f"║ {name_display.ljust(34)}║ {value_display.ljust(24)} ║")
         print("╚" + "═" * 35 + "╩" + "═" * 26 + "╝")
-        print("\nEnter a number to edit settings (or press Enter to exit)")
+        print("\n" + t("settings.prompt_number"))
         try:
-            choice = input("\nYour choice: ").strip()
+            choice = input("\n" + t("settings.your_choice") + " ").strip()
             if not choice:
                 logger.info("User exited configuration editor")
-                print("Exiting configuration editor.\n")
+                print(t("settings.exiting") + "\n")
                 break
             index = int(choice) - 1
             if index < 0 or index >= len(settings_config):
                 logger.warning(f"Invalid selection: {choice}")
-                print("Invalid selection. Please choose a valid number.")
+                print(t("settings.invalid_selection"))
                 continue
             setting = settings_config[index]
             key = setting['key']
             current_value = properties.get(key, setting['default'])
             logger.info(f"User editing setting: {setting['name']} ({key}), current value: {current_value}")
-            print(f"\nEditing: {setting['name']}")
-            print(f"\nDescription: {setting['description']}")
-            print(f"Current value: {current_value if current_value else '(empty)'}")
+            print("\n" + t("settings.editing", name=t('settings.name.' + key)))
+            print("\n" + t("settings.description", description=t('settings.desc.' + key)))
+            print(t("settings.current_value", value=current_value if current_value else t('settings.empty')))
             old_value = current_value
             new_value = None
             if setting['type'] == 'boolean':
-                print("\nOptions:")
-                print(" 1. Enable (true)")
-                print(" 2. Disable (false)")
+                print("\n" + t("settings.options"))
+                print(" 1. " + t("settings.enable"))
+                print(" 2. " + t("settings.disable"))
                 while True:
-                    bool_choice = input("\nSelect option (1/2): ").strip()
+                    bool_choice = input("\n" + t("settings.select_option") + " ").strip()
                     if not bool_choice:
                         logger.info(f"User cancelled editing {setting['name']}")
-                        print("Cancelled editing.\n")
+                        print(t("settings.cancelled") + "\n")
                         break
                     if bool_choice == '1':
                         new_value = 'true'
@@ -226,20 +228,20 @@ def edit_server_settings():
                         break
                     else:
                         logger.warning(f"Invalid boolean choice: {bool_choice}")
-                        print("Invalid choice. Please enter 1 or 2.")
+                        print(t("settings.invalid_choice_12"))
                 if bool_choice:
                     properties[key] = new_value
                     logger.info(f"Setting changed: {setting['name']} from {old_value} to {new_value}")
-                    edited_settings.append(f"{setting['name']}: {old_value} -> {new_value}")
-                    print(f" - {setting['name']} set to: {new_value}")
+                    edited_settings.append(f"{t('settings.name.' + key)}: {old_value} -> {new_value}")
+                    print(t("settings.set_to", name=t('settings.name.' + key), value=new_value))
             elif setting['type'] == 'int':
                 min_val, max_val = setting['range']
-                print(f"\nValid range: {min_val} - {max_val}")
+                print("\n" + t("settings.valid_range", min=min_val, max=max_val))
                 while True:
-                    int_input = input("\nEnter new value: ").strip()
+                    int_input = input("\n" + t("settings.enter_value") + " ").strip()
                     if not int_input:
                         logger.info(f"User cancelled editing {setting['name']}")
-                        print("Cancelled editing.\n")
+                        print(t("settings.cancelled") + "\n")
                         break
                     try:
                         int_value = int(int_input)
@@ -249,29 +251,29 @@ def edit_server_settings():
                             if key == 'view-distance':
                                 properties['simulation-distance'] = new_value
                                 logger.info(f"Setting changed: {setting['name']} from {old_value} to {new_value}, simulation-distance also set to {new_value}")
-                                edited_settings.append(f"{setting['name']}: {old_value} -> {new_value} (simulation-distance also updated)")
-                                print(f" - {setting['name']} set to: {int_value}")
-                                print(f" - simulation-distance also set to: {int_value}")
+                                edited_settings.append(f"{t('settings.name.' + key)}: {old_value} -> {new_value} (simulation-distance also updated)")
+                                print(t("settings.set_to", name=t('settings.name.' + key), value=int_value))
+                                print(t("settings.simulation_also", value=int_value))
                             else:
                                 logger.info(f"Setting changed: {setting['name']} from {old_value} to {new_value}")
-                                edited_settings.append(f"{setting['name']}: {old_value} -> {new_value}")
-                                print(f" - {setting['name']} set to: {int_value}")
+                                edited_settings.append(f"{t('settings.name.' + key)}: {old_value} -> {new_value}")
+                                print(t("settings.set_to", name=t('settings.name.' + key), value=int_value))
                             break
                         else:
                             logger.warning(f"Value out of range: {int_value}, allowed: {min_val}-{max_val}")
-                            print(f"Value must be between {min_val} and {max_val}.")
+                            print(t("settings.value_out_of_range", min=min_val, max=max_val))
                     except ValueError:
                         logger.warning(f"Invalid integer input: {int_input}")
-                        print("Please enter a valid number.")
+                        print(t("settings.enter_number"))
             elif setting['type'] == 'enum':
-                print("\nAvailable options:")
+                print("\n" + t("settings.available_options"))
                 for j, option in enumerate(setting['options'], 1):
                     print(f" {j}. {option}")
                 while True:
-                    enum_choice = input("\nSelect option: ").strip()
+                    enum_choice = input("\n" + t("settings.select_option_prompt") + " ").strip()
                     if not enum_choice:
                         logger.info(f"User cancelled editing {setting['name']}")
-                        print("Cancelled editing.\n")
+                        print(t("settings.cancelled") + "\n")
                         break
                     try:
                         option_index = int(enum_choice) - 1
@@ -279,26 +281,26 @@ def edit_server_settings():
                             new_value = setting['options'][option_index]
                             properties[key] = new_value
                             logger.info(f"Setting changed: {setting['name']} from {old_value} to {new_value}")
-                            edited_settings.append(f"{setting['name']}: {old_value} -> {new_value}")
-                            print(f" - {setting['name']} set to: {new_value}")
+                            edited_settings.append(f"{t('settings.name.' + key)}: {old_value} -> {new_value}")
+                            print(t("settings.set_to", name=t('settings.name.' + key), value=new_value))
                             break
                         else:
                             logger.warning(f"Invalid enum index: {option_index}, allowed: 0-{len(setting['options'])-1}")
-                            print(f"Please enter a number between 1 and {len(setting['options'])}")
+                            print(t("settings.enter_number_between", max=len(setting['options'])))
                     except ValueError:
                         logger.warning(f"Invalid enum input: {enum_choice}")
-                        print("Please enter a valid number.")
+                        print(t("settings.enter_number"))
             elif setting['type'] == 'string':
-                string_input = input("\nEnter new value: ").strip()
+                string_input = input("\n" + t("settings.enter_new_value") + " ").strip()
                 if not string_input:
                     logger.info(f"User cancelled editing {setting['name']}")
-                    print("Cancelled editing.\n")
+                    print(t("settings.cancelled") + "\n")
                 else:
                     new_value = string_input
                     properties[key] = new_value
                     logger.info(f"Setting changed: {setting['name']} from '{old_value}' to '{new_value}'")
-                    edited_settings.append(f"{setting['name']}: '{old_value}' -> '{new_value}'")
-                    print(f" - {setting['name']} set to: {string_input}")
+                    edited_settings.append(f"{t('settings.name.' + key)}: '{old_value}' -> '{new_value}'")
+                    print(t("settings.set_to", name=t('settings.name.' + key), value=string_input))
             try:
                 logger.info("Saving updated server properties")
                 with open(SERVER_PROPERTIES, 'r', encoding='utf-8') as f:
@@ -321,20 +323,20 @@ def edit_server_settings():
                 with open(SERVER_PROPERTIES, 'w', encoding='utf-8') as f:
                     f.writelines(updated_lines)
                 logger.info("Configuration saved successfully")
-                print("\nConfiguration saved successfully!")
+                print("\n" + t("settings.saved"))
             except Exception as e:
                 logger.error(f"Error saving configuration: {e}")
-                print(f"\nError saving configuration: {e}\n")
+                print("\n" + t("settings.save_error", error=e) + "\n")
         except ValueError:
             logger.warning(f"Invalid input (not a number): {choice}")
-            print("Please enter a valid number.")
+            print(t("settings.enter_number"))
         except KeyboardInterrupt:
             logger.warning("Configuration editor interrupted by user")
-            print("\n\nOperation cancelled by user.\n")
+            print("\n\n" + t("settings.operation_cancelled") + "\n")
             break
         except Exception as e:
             logger.error(f"Unexpected error in configuration editor: {e}")
-            print(f"\nUnexpected error: {e}\n")
+            print("\n" + t("settings.unexpected", error=e) + "\n")
     if edited_settings:
         logger.info(f"Configuration editor completed. Changes made: {len(edited_settings)}")
         logger.info("Changes list: " + ", ".join(edited_settings))

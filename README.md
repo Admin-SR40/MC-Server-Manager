@@ -47,14 +47,33 @@ During the first install you can choose where modules are stored:
 | 2 | `<server>/bundles/modules` | Stored inside this server directory |
 | 3 | Custom path | Any other location |
 
-The choice is saved in `config/modules.cfg` and can be changed at any time by editing:
+The choice is saved in `config/script.cfg` and can be changed at any time by editing:
 
 ```ini
-[MODULES]
+[modules]
 dir = /path/to/modules
 ```
 
 `modules.json` inside the module folder records every installed module's version and MD5 hash, which is used to compare against `update.json` when checking for updates.
+
+> Existing installations: if an old `config/modules.cfg` is detected, it is migrated into `config/script.cfg` automatically on the next run.
+
+## Language Support
+
+The default language is English. On the very first run you can choose a language before anything else; built-in language packs are downloaded from GitHub and verified with MD5 checks.
+
+```bash
+./start.sh --lang            # show current language and available languages
+./start.sh --lang zh_CN      # switch to Simplified Chinese (auto-downloads if needed)
+./start.sh --lang en         # switch back to English
+```
+
+- The selected language is stored in `config/script.cfg` (`[script] language`).
+- Language files live in `bundles/lang/` (e.g. `zh_CN.json`).
+- Custom language files can be dropped into `bundles/lang/`; each file must contain `lang`, `display` and a `strings` map.
+- Missing translation keys fall back to English automatically.
+- `--version` also checks installed language files against `update.json` and updates outdated packs.
+- Logs stay in English; only the interactive UI is translated.
 
 ### Available Modules
 
@@ -90,7 +109,8 @@ If a module depends on other modules (e.g. `version` requires `backup` and `init
 | `(no command)` | Start the server |
 | `--install [module\|all]` | Install or update modules |
 | `--info` | Show server configuration and environment info |
-| `--version [force]` | Check for script and module updates |
+| `--version [force]` | Check for script, module and language updates |
+| `--lang [code]` | Show or change language |
 | `--license` | Show the open source license |
 | `--help` | Show installed commands and available modules |
 
@@ -214,7 +234,7 @@ By default, uninstalled modules are never downloaded or touched. Updates are MD5
 
 - File cleanup — removes temporary files, old logs, and stale backups
 - Log dumping — compressed log archives with keyword search
-- Self-update — check for and download the latest core/modules
+- Self-update — check for and download the latest core/modules/language packs
 - Container support — Docker and Kubernetes environment detection with cgroup memory limits
 
 </details>
@@ -236,10 +256,11 @@ By default, uninstalled modules are never downloaded or touched. Updates are MD5
 </details>
 
 <details>
-<summary>config/modules.cfg</summary>
+<summary>config/script.cfg</summary>
 
 | Key | Description |
 |-----|-------------|
+| `language` | Active language code (default: `en`) |
 | `dir` | Directory where installed modules and `modules.json` are stored |
 
 </details>
@@ -250,12 +271,15 @@ By default, uninstalled modules are never downloaded or touched. Updates are MD5
 ./
 ├── start.sh                                         # Core launcher
 ├── modules/                                         # (repo) Module source files
+├── lang/zh_CN.json                                  # (repo) Simplified Chinese language pack
 ├── core.jar                                         # Server core
 ├── config/
 │   ├── version.cfg                                  # Tool configuration
-│   ├── modules.cfg                                  # Module directory setting
+│   ├── script.cfg                                   # Language + module directory setting
 │   └── server.properties                            # Server properties
 ├── bundles/                                         # Version & backup storage
+│   ├── lang/                                        # Installed language packs
+│   └── modules/                                     # Installed modules (per-server option)
 │   └── [version]/
 │       ├── core.zip                                 # Server core package
 │       ├── server.zip                               # Full server snapshot

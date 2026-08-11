@@ -17,8 +17,8 @@ MODULE = {
     "description": "File cleanup and log dump utilities",
     "requires": [],
     "commands": {
-        "--cleanup": "Clean up server files to free up space",
-        "--dump": "Create a compressed dump of log files",
+        "--cleanup": "cmd.cleanup",
+        "--dump": "cmd.dump",
     },
 }
 
@@ -29,11 +29,12 @@ remove_lock = None
 safe_rmtree = None
 format_file_size = None
 _unlock_with_logging = None
+t = None
 
 
 def bind(ctx):
     global BASE_DIR, logger, create_lock, remove_lock
-    global safe_rmtree, format_file_size, _unlock_with_logging
+    global safe_rmtree, format_file_size, _unlock_with_logging, t
     BASE_DIR = ctx.BASE_DIR
     logger = ctx.logger
     create_lock = ctx.create_lock
@@ -41,6 +42,7 @@ def bind(ctx):
     safe_rmtree = ctx.safe_rmtree
     format_file_size = ctx.format_file_size
     _unlock_with_logging = ctx.unlock_with_logging
+    t = ctx.t
 
 
 def dispatch(args, ctx):
@@ -56,10 +58,10 @@ def cleanup_files():
     logger.info("Starting cleanup operation")
     if not create_lock(["--cleanup"]):
         logger.error("Could not create task lock")
-        print("\nError: Could not create task lock\n")
+        print("\n" + t("maintenance.lock_error") + "\n")
         return
     try:
-        print("\nPreparing to clean up server files...")
+        print("\n" + t("maintenance.preparing") + "...")
         cleanup_patterns = [
             BASE_DIR / "logs" / "*",
             BASE_DIR / "worlds" / "usercache.json",
@@ -74,20 +76,20 @@ def cleanup_files():
                 if pattern.exists():
                     files_to_clean.append(str(pattern))
         if not files_to_clean:
-            print("No files to clean up found.")
+            print(t("maintenance.nothing_clean"))
             print("")
             return
-        print("\nThe following files will be deleted:")
+        print("\n" + t("maintenance.will_delete"))
         print("=" * 50)
         for file_path in files_to_clean:
             file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
             print(f"{file_path} ({file_size} bytes)")
         print("=" * 50)
         total_size = sum(os.path.getsize(f) for f in files_to_clean if os.path.exists(f))
-        print(f"Total space to free: {total_size} bytes (~{total_size // (1024*1024)} MB)\n")
-        confirm = input("Are you sure you want to delete these files? (y/N): ").strip().upper() or "N"
+        print(t("maintenance.total_free", size=total_size, mb=total_size // (1024*1024)) + "\n")
+        confirm = input(t("maintenance.confirm_delete") + " ").strip().upper() or "N"
         if confirm != "Y":
-            print("Cleanup canceled.\n")
+            print(t("maintenance.canceled") + "\n")
             return
         print("")
         deleted_count = 0
@@ -102,12 +104,12 @@ def cleanup_files():
                         os.remove(file_path)
                     deleted_count += 1
                     freed_space += file_size
-                    print(f"Deleted: {file_path}")
+                    print(t("maintenance.deleted", path=file_path))
             except Exception as e:
                 logger.error(f"Error deleting {file_path}: {e}")
-                print(f"Error deleting {file_path}: {e}\n")
+                print(t("maintenance.delete_error", path=file_path, error=e) + "\n")
         logger.info(f"Cleanup completed: deleted {deleted_count} files, freed {freed_space} bytes")
-        print(f"\nCleanup completed. Deleted {deleted_count} files, freed {freed_space} bytes (~{freed_space // (1024*1024)} MB).\n")
+        print("\n" + t("maintenance.completed", count=deleted_count, size=freed_space, mb=freed_space // (1024*1024)) + "\n")
     finally:
         remove_lock()
 
@@ -117,7 +119,7 @@ def dump_logs():
     logger.info(f"Starting dump_logs function with command: {' '.join(command)}")
     if not create_lock(command):
         logger.error("Failed to create lock for dump_logs operation")
-        print("\nError: Could not create task lock\n")
+        print("\n" + t("maintenance.lock_error") + "\n")
         return
     try:
         logs_dir = BASE_DIR / "logs"
@@ -125,7 +127,7 @@ def dump_logs():
         if not logs_dir.exists() or not any(logs_dir.iterdir()):
             logger.warning("No log files found to dump")
             print("")
-            print("No log files found to dump.")
+            print(t("maintenance.no_logs"))
             print("")
             return
         search_terms = sys.argv[2:] if len(sys.argv) > 2 else []
@@ -133,9 +135,9 @@ def dump_logs():
         if search_terms:
             logger.info(f"Starting log search with terms: {search_terms}")
             print("\n" + "=" * 45)
-            print("          Log Search Utility")
+            print(t("maintenance.search_title").center(45))
             print("=" * 45)
-            print(f"Searching for: {', '.join(search_terms)} (case-insensitive)")
+            print(t("maintenance.searching_for", terms=", ".join(search_terms)))
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             output_file = BASE_DIR / f"logs_search_{timestamp}.zip"
             logger.info(f"Output file: {output_file}")
@@ -184,10 +186,10 @@ def dump_logs():
                                 f.write("\n".join(file_content))
                                 f.write("\n")
                             logger.info(f"Found {file_matched_lines} matches in: {rel_path}")
-                            print(f"Found {file_matched_lines} matches in: {rel_path}")
+                            print(t("maintenance.found_matches", count=file_matched_lines, path=rel_path))
                     except Exception as e:
                         logger.error(f"Error processing {log_file}: {e}")
-                        print(f"Error processing {log_file}: {e}")
+                        print(t("maintenance.process_error", path=log_file, error=e))
                         continue
                 logger.info(f"File scanning completed: scanned={files_scanned}, matched={files_matched}, total_lines={total_matched_lines}")
                 report_content = f"""===============================
@@ -214,12 +216,12 @@ def dump_logs():
                     file_size = os.path.getsize(output_file)
                     logger.info(f"ZIP archive created: {output_file}, size: {format_file_size(file_size)}")
                     print("\n" + "=" * 45)
-                    print(f"Dumped {files_matched} log files.")
-                    print(f"Found {total_matched_lines} matching lines in {files_matched} files.")
-                    print(f"\nResult saved to: {output_file.name}")
-                    print(f"File size: {file_size} bytes (~{file_size // (1024*1024)} MB)")
+                    print(t("maintenance.dumped_files", count=files_matched))
+                    print(t("maintenance.found_lines", lines=total_matched_lines, files=files_matched))
+                    print("\n" + t("maintenance.result_saved", name=output_file.name))
+                    print(t("maintenance.file_size", size=file_size, mb=file_size // (1024*1024)))
                     print("=" * 45)
-                    confirm = input("\nDo you want to delete the original log files? (y/N): ").strip().upper() or "N"
+                    confirm = input("\n" + t("maintenance.delete_originals") + " ").strip().upper() or "N"
                     logger.info(f"User confirmation for log deletion: {confirm}")
                     if confirm == "Y":
                         logger.info("Starting deletion of original log files")
@@ -235,18 +237,18 @@ def dump_logs():
                                     logger.info(f"Deleted log file: {log_file}")
                                 except Exception as e:
                                     logger.error(f"Error deleting {log_file}: {e}")
-                                    print(f"Error deleting {log_file}: {e}")
+                                    print(t("maintenance.delete_log_error", path=log_file, error=e))
                         logger.info(f"Log deletion completed: {deleted_count} files deleted, {format_file_size(freed_space)} freed")
-                        print(f"Deleted {deleted_count} log files, freed {freed_space} bytes.")
+                        print(t("maintenance.deleted_logs", count=deleted_count, size=freed_space))
                     else:
                         logger.info("User chose not to delete original log files")
                 else:
                     logger.info("No matching content found in any log files")
-                    print("\nNo matching content found in any log files.")
+                    print("\n" + t("maintenance.no_match"))
                 print("")
             except Exception as e:
                 logger.error(f"Error creating log search: {e}", exc_info=True)
-                print(f"Error creating log search: {e}")
+                print(t("maintenance.dump_error", error=e))
                 traceback.print_exc()
             finally:
                 if temp_dir.exists():
@@ -259,12 +261,12 @@ def dump_logs():
         else:
             logger.info("Starting full log dump (no search terms)")
             print("\n" + "=" * 45)
-            print("          Log Dump Utility")
+            print(t("maintenance.dump_title").center(45))
             print("=" * 45)
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             output_file = BASE_DIR / f"logs_dump_{timestamp}.zip"
             logger.info(f"Full log dump output file: {output_file}")
-            print(f"\nCreating complete log dump...")
+            print("\n" + t("maintenance.creating_dump") + "...")
             try:
                 temp_dir = BASE_DIR / f"temp_logs_{timestamp}"
                 logger.info(f"Temporary directory for full dump: {temp_dir}")
@@ -307,11 +309,11 @@ def dump_logs():
                 file_size = os.path.getsize(output_file)
                 logger.info(f"Full log dump completed: {output_file}, size: {format_file_size(file_size)}")
                 print("\n" + "=" * 45)
-                print(f"Dumped {file_count} log files.")
-                print(f"Result saved to: {output_file.name}")
-                print(f"File size: {file_size} bytes (~{file_size // (1024*1024)} MB)")
+                print(t("maintenance.dumped_files", count=file_count))
+                print(t("maintenance.result_saved", name=output_file.name))
+                print(t("maintenance.file_size", size=file_size, mb=file_size // (1024*1024)))
                 print("=" * 45)
-                confirm = input("\nDo you want to delete the original log files? (y/N): ").strip().upper() or "N"
+                confirm = input("\n" + t("maintenance.delete_originals") + " ").strip().upper() or "N"
                 logger.info(f"User confirmation for full log deletion: {confirm}")
                 if confirm == "Y":
                     logger.info("Starting deletion of all original log files")
@@ -328,15 +330,15 @@ def dump_logs():
                                 logger.info(f"Deleted log file: {file_path}")
                             except Exception as e:
                                 logger.error(f"Error deleting {file_path}: {e}")
-                                print(f"Error deleting {file_path}: {e}")
+                                print(t("maintenance.delete_log_error", path=file_path, error=e))
                     logger.info(f"Full log deletion completed: {deleted_count} files deleted, {format_file_size(freed_space)} freed")
-                    print(f"Deleted {deleted_count} log files, freed {freed_space} bytes.")
+                    print(t("maintenance.deleted_logs", count=deleted_count, size=freed_space))
                 else:
                     logger.info("User chose not to delete original log files")
                 print("")
             except Exception as e:
                 logger.error(f"Error creating log dump: {e}", exc_info=True)
-                print(f"Error creating log dump: {e}\n")
+                print(t("maintenance.dump_error", error=e) + "\n")
                 traceback.print_exc()
                 if temp_dir.exists():
                     logger.info(f"Cleaning up temporary directory after error: {temp_dir}")

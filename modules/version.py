@@ -25,12 +25,12 @@ MODULE = {
     "description": "Purpur version download, switch and upgrade",
     "requires": ["backup", "init"],
     "commands": {
-        "--get [ver]": "Fetch Purpur server info and download",
-        "--list": "List all available versions",
-        "--new": "Save current server and create a new one",
-        "--change <ver>": "Switch to specified version",
-        "--upgrade [force/ver]": "Upgrade server core to compatible version",
-        "--delete <ver>": "Delete specified version from bundles",
+        "--get [ver]": "cmd.get",
+        "--list": "cmd.list",
+        "--new": "cmd.new",
+        "--change <ver>": "cmd.change",
+        "--upgrade [force/ver]": "cmd.upgrade",
+        "--delete <ver>": "cmd.delete",
     },
 }
 
@@ -49,12 +49,13 @@ compare_versions = None
 show_info = None
 USER_AGENT = None
 _ctx = None
+t = None
 
 
 def bind(ctx):
     global BASE_DIR, CONFIG_FILE, BUNDLES_DIR, SERVER_JAR, logger
     global create_lock, remove_lock, load_config, get_exclude_list
-    global format_file_size, _unlock_with_logging, compare_versions, show_info, USER_AGENT, _ctx
+    global format_file_size, _unlock_with_logging, compare_versions, show_info, USER_AGENT, _ctx, t
     BASE_DIR = ctx.BASE_DIR
     CONFIG_FILE = ctx.CONFIG_FILE
     BUNDLES_DIR = ctx.BUNDLES_DIR
@@ -70,14 +71,7 @@ def bind(ctx):
     show_info = ctx.show_info
     USER_AGENT = ctx.USER_AGENT
     _ctx = ctx
-
-
-def _require_module(ctx, name):
-    module = ctx.get_module(name)
-    if module is None:
-        print(f"\nRequired module '{name}' is not installed.")
-        print(f'Use "--install {name}" to install it.\n')
-    return module
+    t = ctx.t
 
 
 def dispatch(args, ctx):
@@ -112,12 +106,12 @@ def create_new_server():
     logger.info("Starting new server creation process")
     if not create_lock(["--new"]):
         logger.error("Failed to create lock for new server creation")
-        print("\nError: Could not create task lock\n")
+        print("\n" + t("version.lock_error") + "\n")
         return
     try:
         logger.info("Initializing new server creation interface")
         print("\n" + "=" * 50)
-        print("               New Server Creation")
+        print(t("version.new_title").center(50))
         print("=" * 50)
         if CONFIG_FILE.exists():
             try:
@@ -141,11 +135,11 @@ def create_new_server():
                         available_versions.append(version_dir.name)
         if not available_versions:
             logger.error("No server versions found in bundles directory")
-            print("\nNo server versions found in bundles directory.")
-            print("Please download a version first using: --get <version>\n")
+            print("\n" + t("version.no_versions"))
+            print(t("version.download_hint") + "\n")
             return
         logger.info(f"Found {len(available_versions)} available versions")
-        print("\nAvailable Versions:")
+        print("\n" + t("version.available_versions"))
         print("=" * 30)
         sorted_versions = sorted(available_versions, key=lambda v: [int(n) for n in v.split('.')], reverse=True)
         for i, version in enumerate(sorted_versions, 1):
@@ -156,27 +150,27 @@ def create_new_server():
             selection = input("\nSelect a version to create (number): ").strip()
             if not selection:
                 logger.info("User cancelled version selection")
-                print("No selection made.")
+                print(t("version.no_selection"))
                 return
             logger.info(f"User selected version index: {selection}")
             index = int(selection) - 1
             if not (0 <= index < len(sorted_versions)):
                 logger.error(f"Invalid version selection: {selection}")
-                print("Invalid selection.")
+                print(t("version.invalid_selection"))
                 return
             selected_version = sorted_versions[index]
             logger.info(f"Selected version: {selected_version}")
-            print(f"Selected version: {selected_version}")
+            print(t("version.selected_version", version=selected_version))
             if CONFIG_FILE.exists():
-                backup_mod = _require_module(_ctx, "backup")
+                backup_mod = _ctx.require_module("backup") if _ctx else None
                 if backup_mod is None:
-                    print("Cannot create a new server without the backup module.")
+                    print(t("version.backup_module_missing"))
                     return
-                print("\nSaving current server state...")
+                print(t("version.save_state") + "...")
                 backup_mod.save_version(current_version)
         except ValueError as e:
             logger.error(f"Invalid input for version selection: {e}")
-            print("Invalid input. Please enter a number.")
+            print(t("version.enter_number"))
             return
         if check_for_updates(selected_version):
             logger.info(f"Update available for version {selected_version}")
@@ -197,7 +191,7 @@ def create_new_server():
         logger.info("Cleaning current directory for new server")
         print("\nCreating new server...")
         if _ctx:
-            _ctx.preserve_modules_config()
+            _ctx.preserve_script_config()
         exclude_list = get_exclude_list()
         logger.info(f"Using exclude list with {len(exclude_list)} patterns")
         items_removed = 0
@@ -220,23 +214,23 @@ def create_new_server():
             with zipfile.ZipFile(core_zip_path, 'r') as zipf:
                 zipf.extractall(BASE_DIR)
             logger.info(f"Successfully extracted core for version {selected_version}")
-            print(f"Extracted core for version {selected_version}")
+            print(t("version.extracted_core", version=selected_version))
         except Exception as e:
             logger.error(f"Error extracting core: {e}")
-            print(f"Error extracting core: {e}\n")
+            print(t("version.extract_error", error=e) + "\n")
             return
         logger.info("Presenting initialization options to user")
-        print("\nInitialization options:")
-        print(" 1. Enter --init")
-        print(" 2. Enter --init auto")
-        print(" 3. Exit without initialization")
+        print("\n" + t("version.init_options"))
+        print(" 1. " + t("version.init_manual"))
+        print(" 2. " + t("version.init_auto"))
+        print(" 3. " + t("version.init_exit"))
         while True:
             choice = input("\nYour choice (1-3): ").strip()
             logger.info(f"User initialization choice: {choice}")
             if choice == "1":
                 logger.info("User chose manual initialization")
-                print("Running manual initialization...")
-                init_mod = _require_module(_ctx, "init")
+                print(t("version.running_manual") + "...")
+                init_mod = _ctx.require_module("init") if _ctx else None
                 if init_mod:
                     init_mod.init_config(prefill_version=selected_version)
                 else:
@@ -245,8 +239,8 @@ def create_new_server():
                 break
             elif choice == "2":
                 logger.info("User chose auto initialization")
-                print("Running auto initialization...")
-                init_mod = _require_module(_ctx, "init")
+                print(t("version.running_auto") + "...")
+                init_mod = _ctx.require_module("init") if _ctx else None
                 if init_mod:
                     init_mod.init_config_auto(prefill_version=selected_version)
                 else:
@@ -255,22 +249,22 @@ def create_new_server():
                 break
             elif choice == "3":
                 logger.info("User chose to exit without initialization")
-                print("Server created but not initialized.")
-                print("Please run --init or --init auto to configure the server.\n")
+                print(t("version.not_initialized"))
+                print(t("version.init_hint") + "\n")
                 break
             else:
                 logger.warning(f"Invalid initialization choice: {choice}")
-                print("Invalid input. Choose 1, 2, or 3.")
+                print(t("version.invalid_init_choice"))
         logger.info("New server creation process completed")
     except KeyboardInterrupt:
         logger.info("New server creation interrupted by user")
-        print("\nOperation cancelled by user.\n")
+        print("\n" + t("version.cancelled") + "\n")
     except Exception as e:
         logger.error(f"Error in create_new_server(): {e}")
-        print(f"Error during new server creation: {e}\n")
+        print(t("version.create_error", error=e) + "\n")
     finally:
         if _ctx:
-            _ctx.restore_modules_config()
+            _ctx.restore_script_config()
         if remove_lock():
             logger.info("New server creation lock released")
         else:
@@ -284,7 +278,7 @@ def check_for_updates(version):
     core_zip_path = version_dir / "core.zip"
     if not core_zip_path.exists():
         logger.warning(f"No local version found to check for updates: {core_zip_path}")
-        print("No local version found to check for updates.")
+        print(t("version.no_local_version"))
         return False
     local_build = None
     try:
@@ -311,20 +305,13 @@ def check_for_updates(version):
         return False
     if local_build is None:
         logger.warning("Could not determine local build number")
-        print("Could not determine local build number.")
+        print(t("version.cannot_determine_build"))
         return False
     logger.info(f"Querying PurpurMC API for version {version}")
     api_base = os.environ.get("MCSM_PURPUR_API", "https://api.purpurmc.org/v2/purpur")
     api_url = f"{api_base}/{version}"
     try:
-        logger.info(f"Making API request to: {api_url}")
-        request = urllib.request.Request(api_url)
-        request.add_header("User-Agent", USER_AGENT)
-        start_time = time.time()
-        with urllib.request.urlopen(request, timeout=10) as response:
-            elapsed_time = time.time() - start_time
-            logger.info(f"API response received in {elapsed_time:.2f}s, status: {response.status}")
-            version_data = json.loads(response.read().decode())
+        latest_build, _ = _get_latest_successful_build(api_base, version)
     except urllib.error.HTTPError as e:
         logger.error(f"HTTP error fetching version data - HTTP {e.code}: {e.reason}")
         print(f"HTTP Error: {e.code} - {e.reason}")
@@ -350,59 +337,19 @@ def check_for_updates(version):
         print(f"Unexpected error: {e}")
         print("Continuing with local version...")
         return False
-    builds = version_data.get("builds", {})
-    all_builds = builds.get("all", [])
-    if not all_builds:
-        logger.warning(f"No builds found for version {version} in API response")
-        print("No builds found for this version.")
-        return False
-    logger.info(f"Found {len(all_builds)} builds in API response")
-    latest_build = None
-    successful_builds_checked = 0
-    for build in sorted(all_builds, key=int, reverse=True):
-        try:
-            logger.info(f"Checking build {build} for successful status...")
-            build_url = f"{api_base}/{version}/{build}"
-            request = urllib.request.Request(build_url)
-            request.add_header("User-Agent", USER_AGENT)
-            start_time = time.time()
-            with urllib.request.urlopen(request, timeout=5) as build_response:
-                elapsed_time = time.time() - start_time
-                logger.info(f"Build {build} API response in {elapsed_time:.2f}s")
-                build_data = json.loads(build_response.read().decode())
-            if build_data.get("result") == "SUCCESS":
-                latest_build = int(build)
-                logger.info(f"Found successful build: {latest_build}")
-                successful_builds_checked += 1
-                break
-            else:
-                logger.info(f"Build {build} result: {build_data.get('result', 'UNKNOWN')}")
-                successful_builds_checked += 1
-        except urllib.error.HTTPError as e:
-            logger.warning(f"HTTP error checking build {build}: {e.code} {e.reason}")
-            continue
-        except urllib.error.URLError as e:
-            logger.warning(f"URL error checking build {build}: {e.reason}")
-            continue
-        except socket.timeout:
-            logger.warning(f"Timeout checking build {build}")
-            continue
-        except Exception as e:
-            logger.warning(f"Error checking build {build}: {type(e).__name__}: {e}")
-            continue
     if latest_build is None:
-        logger.warning(f"No successful builds found for version {version} after checking {successful_builds_checked} builds")
-        print("No successful builds found for this version.")
+        logger.warning(f"No successful builds found for version {version}")
+        print(t("version.no_successful_builds"))
         return False
     logger.info(f"Local build: {local_build}, Latest successful build: {latest_build}")
-    print(f"Local build: {local_build}, Latest build: {latest_build}")
+    print(t("version.local_latest", local=local_build, latest=latest_build))
     if latest_build > local_build:
         logger.info(f"Update available! Build {local_build} -> {latest_build}")
-        print("Update available!")
+        print(t("version.update_available") + "!")
         return True
     else:
         logger.info(f"No updates found. Local build {local_build} is up-to-date or newer")
-        print("No updates found.")
+        print(t("version.no_updates") + ".")
         return False
 
 
@@ -412,7 +359,7 @@ def show_version_info(version):
     core_zip_path = version_dir / "core.zip"
     if not core_zip_path.exists():
         logger.warning(f"No core.zip found for version {version}")
-        print(f"No core.zip found for version {version}")
+        print(t("version.no_core_zip", version=version))
         return
     try:
         with zipfile.ZipFile(core_zip_path, 'r') as zipf:
@@ -471,6 +418,39 @@ def _list_remote_versions():
         logger.error(f"Unexpected error fetching versions: {type(e).__name__}: {e}")
         print(f"Error fetching available versions: {e}\n")
 
+def _fetch_json(url, timeout=10):
+    request = urllib.request.Request(url)
+    request.add_header("User-Agent", USER_AGENT)
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode())
+
+def _get_latest_successful_build(api_base, version):
+    """Return (build, build_data) for the newest SUCCESS build, else (None, None)."""
+    version_data = _fetch_json(f"{api_base}/{version}")
+    all_builds = version_data.get("builds", {}).get("all", [])
+    if not all_builds:
+        logger.warning(f"No builds found for version {version} in API response")
+        return None, None
+    logger.info(f"Found {len(all_builds)} builds for version {version}")
+    for build in sorted(all_builds, key=int, reverse=True):
+        logger.info(f"Checking build {build} for successful status...")
+        try:
+            build_data = _fetch_json(f"{api_base}/{version}/{build}", timeout=5)
+            if build_data.get("result") == "SUCCESS":
+                logger.info(f"Found successful build: {build}")
+                return int(build), build_data
+            logger.info(f"Build {build} result: {build_data.get('result', 'UNKNOWN')}")
+        except urllib.error.HTTPError as e:
+            logger.warning(f"HTTP error checking build {build}: {e.code} {e.reason}")
+        except urllib.error.URLError as e:
+            logger.warning(f"URL error checking build {build}: {e.reason}")
+        except socket.timeout:
+            logger.warning(f"Timeout checking build {build}")
+        except Exception as e:
+            logger.warning(f"Error checking build {build}: {type(e).__name__}: {e}")
+    logger.warning(f"No successful builds found for version {version}")
+    return None, None
+
 
 def download_version(version=None):
     logger.info(f"Starting download_version function, version parameter: {version}")
@@ -500,68 +480,38 @@ def download_version(version=None):
             try:
                 logger.info(f"Querying version info from PurpurMC API: {version}")
                 api_base = os.environ.get("MCSM_PURPUR_API", "https://api.purpurmc.org/v2/purpur")
-                api_url = f"{api_base}/{version}"
-                request = urllib.request.Request(api_url)
-                request.add_header("User-Agent", USER_AGENT)
-                start_time = time.time()
-                with urllib.request.urlopen(request, timeout=10) as response:
-                    elapsed_time = time.time() - start_time
-                    logger.info(f"Version API response received in {elapsed_time:.2f}s, status: {response.status}")
-                    version_data = json.loads(response.read().decode())
-                    logger.info(f"Version data received: {json.dumps(version_data, indent=2)[:500]}...")
-                builds = version_data.get("builds", {})
-                latest_build = builds.get("latest")
-                all_builds = builds.get("all", [])
-                logger.info(f"Found {len(all_builds)} builds for version {version}")
-                if not all_builds:
-                    logger.warning(f"No builds found for version {version}")
-                    print(f"No builds found for version {version}\n")
+                successful_build, build_data = _get_latest_successful_build(api_base, version)
+                if successful_build is None:
+                    logger.error(f"No successful builds found for version {version}")
+                    print(f"No successful builds found for version {version}\n")
                     return
-                all_builds.sort(key=int, reverse=True)
-                logger.info(f"Sorted builds (newest first): {all_builds[:5]}...")
-                successful_build = None
-                build_data = None
-                for build in all_builds:
-                    logger.info(f"Checking build {build} for successful status...")
-                    try:
-                        build_url = f"{api_base}/{version}/{build}"
-                        logger.info(f"Querying build info: {build_url}")
-                        request = urllib.request.Request(build_url)
-                        request.add_header("User-Agent", USER_AGENT)
-                        start_time = time.time()
-                        with urllib.request.urlopen(request, timeout=10) as build_response:
-                            elapsed_time = time.time() - start_time
-                            logger.info(f"Build {build} API response received in {elapsed_time:.2f}s")
-                            build_data = json.loads(build_response.read().decode())
-                        if build_data.get("result") == "SUCCESS":
-                            successful_build = build
-                            logger.info(f"Found successful build: {successful_build}")
-                            timestamp = build_data.get("timestamp")
-                            build_date = ""
-                            if timestamp:
-                                build_date = datetime.datetime.fromtimestamp(timestamp / 1000).strftime("%Y-%m-%d %H:%M:%S")
-                            commits = build_data.get("commits", [])
-                            description = "No description available"
-                            author = "Unknown"
-                            if commits:
-                                for commit in commits:
-                                    author = commit.get("author", "Unknown")
-                                    description = commit.get("description", "No description")
-                                    description = description.strip()
-                                    description = re.sub(r'\n\s*\n', '\n\n', description)
-                            md5_hash = build_data.get("md5", "Not available")
-                            logger.info(f"Build {successful_build} info - Author: {author}, Date: {build_date}, MD5: {md5_hash}")
-                            print("\nBuild Information:")
-                            print("=" * 50)
-                            print(f"Author: {author}")
-                            print(f"Date: {build_date}")
-                            print(f"MD5: {md5_hash}")
-                            print("")
-                            print("Description:")
-                            print(f"{description}")
-                            print("=" * 50)
-                            print("")
-                            info_content = f"""====================
+                logger.info(f"Found successful build: {successful_build}")
+                timestamp = build_data.get("timestamp")
+                build_date = ""
+                if timestamp:
+                    build_date = datetime.datetime.fromtimestamp(timestamp / 1000).strftime("%Y-%m-%d %H:%M:%S")
+                commits = build_data.get("commits", [])
+                description = "No description available"
+                author = "Unknown"
+                if commits:
+                    for commit in commits:
+                        author = commit.get("author", "Unknown")
+                        description = commit.get("description", "No description")
+                        description = description.strip()
+                        description = re.sub(r'\n\s*\n', '\n\n', description)
+                md5_hash = build_data.get("md5", "Not available")
+                logger.info(f"Build {successful_build} info - Author: {author}, Date: {build_date}, MD5: {md5_hash}")
+                print("\n" + t("version.build_info"))
+                print("=" * 50)
+                print(t("version.author", author=author))
+                print(t("version.date", date=build_date))
+                print(t("version.md5", md5=md5_hash))
+                print("")
+                print(t("version.description"))
+                print(f"{description}")
+                print("=" * 50)
+                print("")
+                info_content = f"""====================
 Build {successful_build}
 Version {version}
 
@@ -572,44 +522,25 @@ MD5: {md5_hash}
 Description:
 {description}
 ===================="""
-                            break
-                        else:
-                            logger.info(f"Build {build} result: {build_data.get('result', 'UNKNOWN')}, continuing...")
-                    except urllib.error.HTTPError as e:
-                        logger.warning(f"HTTP error checking build {build}: {e.code} {e.reason}")
-                        continue
-                    except urllib.error.URLError as e:
-                        logger.warning(f"URL error checking build {build}: {e.reason}")
-                        continue
-                    except socket.timeout:
-                        logger.warning(f"Timeout checking build {build}")
-                        continue
-                    except Exception as e:
-                        logger.warning(f"Error checking build {build}: {type(e).__name__}: {e}")
-                        continue
-                if not successful_build:
-                    logger.error(f"No successful builds found for version {version} after checking {len(all_builds)} builds")
-                    print(f"No successful builds found for version {version}\n")
-                    return
-                confirm = input("Do you want to download this version? (y/N): ").strip().upper() or "N"
+                confirm = input(t("version.download_confirm") + " (y/N): ").strip().upper() or "N"
                 if confirm != "Y":
                     logger.info("User cancelled download")
-                    print("Download canceled.\n")
+                    print(t("version.download_canceled") + "\n")
                     return
                 if zip_path.exists():
                     logger.warning(f"Version {version} already exists at {zip_path}")
                     confirm = input(f"Version {version} already exists. Overwrite? (y/N): ").strip().upper() or "N"
                     if confirm != "Y":
                         logger.info("User chose not to overwrite existing version")
-                        print("Download canceled.\n")
+                        print(t("version.download_canceled") + "\n")
                         return
                     else:
                         logger.info("User confirmed overwrite of existing version")
                 download_url = f"{api_base}/{version}/{successful_build}/download"
                 logger.info(f"Starting download from: {download_url}")
-                print(f"\nDownloading from {download_url}...")
-                print("This may take a while depending on your network speed.")
-                print("Press CTRL+C to cancel the download.\n")
+                print("\n" + t("version.download_started", url=download_url) + "...")
+                print(t("version.download_speed_hint"))
+                print(t("version.ctrl_c_hint") + "\n")
                 start_time = time.time()
                 target_dir.mkdir(parents=True, exist_ok=True)
                 temp_jar = target_dir / "temp_core.jar"
@@ -645,12 +576,12 @@ Description:
                     file_size = os.path.getsize(temp_jar)
                     download_speed = file_size / elapsed_time / 1024
                     logger.info(f"Download completed in {elapsed_time:.2f} seconds, size: {file_size} bytes, speed: {download_speed:.2f} KB/s")
-                    print(f"Download completed in {elapsed_time:.2f} seconds.")
-                    print(f"Download speed: {download_speed:.2f} KB/s")
+                    print(t("version.download_completed", time=f"{elapsed_time:.2f}") + ".")
+                    print(t("version.download_speed", speed=download_speed))
                     expected_md5 = build_data.get("md5")
                     if expected_md5:
                         logger.info("Verifying file integrity with MD5...")
-                        print("Verifying file integrity...")
+                        print(t("version.verifying") + "...")
                         with open(temp_jar, 'rb') as f:
                             file_hash = hashlib.md5()
                             while chunk := f.read(8192):
@@ -658,22 +589,22 @@ Description:
                             actual_md5 = file_hash.hexdigest()
                         if actual_md5 != expected_md5:
                             logger.error(f"MD5 verification failed! Expected: {expected_md5}, Got: {actual_md5}")
-                            print(f"MD5 verification failed!")
-                            print(f"Expected: {expected_md5}")
-                            print(f"Got: {actual_md5}")
+                            print(t("version.md5_failed") + "!")
+                            print(t("version.md5_expected", md5=expected_md5))
+                            print(t("version.md5_got", md5=actual_md5))
                             print("")
-                            print("The downloaded file may be corrupted.")
-                            print("The file will be deleted due to security reasons.\n")
+                            print(t("version.corrupted"))
+                            print(t("version.deleted_security") + "\n")
                             temp_jar.unlink()
                             if zip_path.exists():
                                 zip_path.unlink()
                             return
                         else:
                             logger.info("MD5 verification successful")
-                            print("MD5 verified successfully!\n")
+                            print(t("version.md5_ok") + "\n")
                     else:
                         logger.warning("No MD5 hash provided for verification")
-                        print("Warning: No MD5 hash provided for verification.\n")
+                        print(t("version.no_md5_warning") + "\n")
                     logger.info("Creating ZIP archive with JAR and info file")
                     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                         zipf.write(temp_jar, "core.jar")
@@ -685,11 +616,11 @@ Description:
                         logger.info("info.txt added to ZIP")
                     temp_jar.unlink()
                     logger.info(f"Successfully downloaded {version} (build {successful_build}) to {zip_path}")
-                    print(f"Successfully downloaded {version} (build {successful_build}) to {zip_path}\n")
+                    print(t("version.downloaded", version=version, build=successful_build, path=zip_path) + "\n")
                 except KeyboardInterrupt:
                     elapsed_time = time.time() - start_time
                     logger.warning(f"Download interrupted by user after {elapsed_time:.2f} seconds")
-                    print(f"\nDownload canceled after {elapsed_time:.2f} seconds.\n")
+                    print("\n" + t("version.download_canceled") + f" ({elapsed_time:.2f}s)\n")
                     if temp_jar.exists():
                         temp_jar.unlink()
                         logger.info("Removed temporary JAR file")
@@ -699,7 +630,7 @@ Description:
                     return
                 except Exception as e:
                     logger.error(f"Error during download: {type(e).__name__}: {e}")
-                    print(f"Error during download: {e}\n")
+                    print(t("version.download_error", error=e) + "\n")
                     if temp_jar.exists():
                         temp_jar.unlink()
                     if zip_path.exists():
@@ -708,19 +639,19 @@ Description:
             except urllib.error.HTTPError as e:
                 if e.code == 404:
                     logger.error(f"Version {version} not found (404)")
-                    print(f"Version {version} not found on PurpurMC\n")
+                    print(t("version.version_not_found", version=version) + "\n")
                 else:
                     logger.error(f"HTTP error for version {version}: {e.code} - {e.reason}")
-                    print(f"HTTP Error: {e.code} - {e.reason}\n")
+                    print(t("version.http_error", code=e.code, reason=e.reason) + "\n")
             except urllib.error.URLError as e:
                 logger.error(f"URL error for version {version}: {e.reason}")
-                print(f"URL Error: {e.reason}\n")
+                print(t("version.url_error", reason=e.reason) + "\n")
             except socket.timeout:
                 logger.error(f"Timeout fetching version {version}")
-                print(f"Timeout while fetching version {version}\n")
+                print(t("version.timeout", version=version) + "\n")
             except Exception as e:
                 logger.error(f"Unexpected error downloading version {version}: {type(e).__name__}: {e}")
-                print(f"Error downloading version {version}: {e}\n")
+                print(t("version.download_version_error", version=version, error=e) + "\n")
     finally:
         if remove_lock():
             logger.info("Download lock released successfully")
@@ -736,10 +667,10 @@ def list_versions():
     ]
     if not versions:
         logger.info("No versions available in bundles directory")
-        print("\nNo versions available in bundles directory\n")
+        print("\n" + t("version.no_versions_installed") + "\n")
         return
     exclude_list = get_exclude_list()
-    print("\nAvailable Versions:")
+    print("\n" + t("version.available_versions"))
     print("=" * 30)
     for version in sorted(versions, key=lambda v: [int(n) for n in v.split(".")]):
         zip_files = list((BUNDLES_DIR / version).glob("*.zip"))
@@ -749,7 +680,7 @@ def list_versions():
             status = "✗ (no backups)"
         print(f" - {version} {status}")
     print("=" * 30)
-    print("\nExclusion List:")
+    print("\n" + t("version.exclusion_list"))
     print("=" * 30)
     for i, item in enumerate(exclude_list, 1):
         print(f" {i}. {item}")
@@ -761,7 +692,7 @@ def delete_version(version):
     logger.info(f"Starting delete_version function for version: {version}")
     if not version:
         logger.error("No version specified in delete_version")
-        print("Usage: --delete <version>")
+        print(t("version.usage_delete"))
         return
     if not create_lock(["--delete", version]):
         logger.error("Failed to create lock for delete operation")
@@ -773,7 +704,7 @@ def delete_version(version):
         if not target_dir.exists():
             logger.warning(f"Version {version} does not exist at path: {target_dir}")
             print("")
-            print(f"Version {version} does not exist")
+            print(t("version.version_not_exist", version=version))
             print("")
             remove_lock()
             return
@@ -794,11 +725,11 @@ def delete_version(version):
         logger.info(f"User confirmation prompt for deleting version {version}: {confirm}")
         if confirm != "Y":
             logger.info(f"User cancelled deletion of version {version}")
-            print("Deletion canceled\n")
+            print(t("version.deletion_canceled") + "\n")
             remove_lock()
             return
         logger.info(f"User confirmed deletion of version {version}")
-        print(f"\nDeleting version {version}...")
+        print("\n" + t("version.deleting_version", version=version) + "...")
         try:
             if logger.isEnabledFor(logging.DEBUG):
                 logger.info(f"Contents of {target_dir} before deletion:")
@@ -812,14 +743,14 @@ def delete_version(version):
                             logger.info(f"  {os.path.relpath(file_path, target_dir)} - size unknown")
             shutil.rmtree(target_dir)
             logger.info(f"Successfully deleted version {version} from {target_dir}")
-            print(f"Version {version} deleted successfully\n")
+            print(t("version.deleted_version", version=version) + "\n")
             
         except Exception as delete_error:
             logger.error(f"Error deleting version {version}: {delete_error}", exc_info=True)
-            print(f"Error deleting version: {delete_error}\n")
+            print(t("version.delete_error", error=delete_error) + "\n")
     except Exception as e:
         logger.error(f"Unexpected error in delete_version function: {e}", exc_info=True)
-        print(f"Error deleting version: {e}\n")
+        print(t("version.delete_error", error=e) + "\n")
     finally:
         _unlock_with_logging("delete")
 
@@ -828,7 +759,7 @@ def change_version(target_version):
     logger.info(f"Starting change_version function for target version: {target_version}")
     if not target_version:
         logger.error("No target version specified in change_version")
-        print("Usage: --change <version>")
+        print(t("version.usage_change"))
         return
     if not create_lock(["--change", target_version]):
         logger.error("Failed to create lock for change version operation")
@@ -838,7 +769,7 @@ def change_version(target_version):
         logger.info("Checking if configuration file exists")
         if not CONFIG_FILE.exists():
             logger.error("Configuration file not found for change version")
-            print("\nConfiguration file not found! Run with --init first.\n")
+            print("\n" + t("version.config_not_found") + "\n")
             remove_lock()
             return
         logger.info("Reading configuration file")
@@ -851,8 +782,8 @@ def change_version(target_version):
         current_version = config["SERVER"].get("version", "unknown")
         logger.info(f"Current server version: {current_version}, target version: {target_version}")
         logger.info(f"Saving current version {current_version} before switching")
-        print(f"Saving current version {current_version}...")
-        backup_mod = _require_module(_ctx, "backup")
+        print(t("version.saving_current", version=current_version) + "...")
+        backup_mod = _ctx.require_module("backup") if _ctx else None
         if backup_mod is None:
             print("Cannot switch versions without the backup module.")
             return
@@ -861,18 +792,18 @@ def change_version(target_version):
         logger.info(f"Looking for target version zip file at: {zip_path}")
         if not zip_path.exists():
             logger.error(f"Target version {target_version} not found at {zip_path}")
-            print(f"Version {target_version} not found")
+            print(t("version.target_not_found", version=target_version))
             print("")
             remove_lock()
             return
         logger.info(f"Target version found: {zip_path}")
-        print(f"Switching to version {target_version}...")
+        print(t("version.switching", version=target_version) + "...")
         exclude_list = get_exclude_list()
         logger.info(f"Using exclude list with {len(exclude_list)} patterns for cleanup")
         logger.info(f"Exclude patterns: {exclude_list}")
         logger.info("Starting cleanup of current directory")
         if _ctx:
-            _ctx.preserve_modules_config()
+            _ctx.preserve_script_config()
         deleted_count = 0
         skipped_count = 0
         for item in BASE_DIR.iterdir():
@@ -903,7 +834,7 @@ def change_version(target_version):
                 logger.info(f"Successfully extracted {file_count} files from {zip_path}")
         except Exception as extract_error:
             logger.error(f"Error extracting version {target_version}: {extract_error}", exc_info=True)
-            print(f"Error switching version: {extract_error}\n")
+            print(t("version.switch_error", error=extract_error) + "\n")
             remove_lock()
             return
         logger.info("Updating configuration file with new version")
@@ -927,11 +858,11 @@ def change_version(target_version):
         show_info()
     except Exception as e:
         logger.error(f"Error switching version: {e}", exc_info=True)
-        print(f"Error switching version: {e}\n")
+        print(t("version.switch_error", error=e) + "\n")
         traceback.print_exc()
     finally:
         if _ctx:
-            _ctx.restore_modules_config()
+            _ctx.restore_script_config()
         _unlock_with_logging("change_version")
 
 
@@ -950,7 +881,7 @@ def upgrade_server(target_version=None, force=False):
     try:
         logger.info("Initializing server upgrade interface")
         print("\n" + "=" * 50)
-        print("               Server Core Upgrade")
+        print(t("version.upgrade_title").center(50))
         print("=" * 50)
         try:
             logger.info("Loading configuration to determine current version")
@@ -962,13 +893,13 @@ def upgrade_server(target_version=None, force=False):
             print("Error: Could not determine current server version.")
             print("Please ensure the server is properly configured.\n")
             return
-        print(f"Current server version: {current_version}")
-        backup_choice = input("\nDo you want to create a backup before upgrading? (y/N): ").strip().upper() or "N"
+        print(t("version.current_version", version=current_version))
+        backup_choice = input("\n" + t("version.backup_ask") + " (y/N): ").strip().upper() or "N"
         logger.info(f"User backup choice: {backup_choice}")
         if backup_choice == "Y":
             logger.info("User chose to create backup before upgrade")
-            print("Creating backup...")
-            backup_mod = _require_module(_ctx, "backup")
+            print(t("version.creating_backup") + "...")
+            backup_mod = _ctx.require_module("backup") if _ctx else None
             if backup_mod:
                 backup_mod.backup_version()
             else:
@@ -987,7 +918,7 @@ def upgrade_server(target_version=None, force=False):
                         logger.info(f"Found version: {version_name}")
         if not available_versions:
             logger.warning("No versions found in bundles directory")
-            print("\nNo versions found in bundles directory.")
+            print("\n" + t("version.no_versions_upgrade") + ".")
             print('Use "--get <version>" to download a version first.\n')
             return
         if target_version:
@@ -1070,7 +1001,7 @@ def upgrade_server(target_version=None, force=False):
                 logger.info(f"Displayed version {ver}: {status}")
             print("=" * 30)
             try:
-                selection = input("\nSelect a version to upgrade to (number): ").strip()
+                selection = input("\n" + t("version.select_version") + " ").strip()
                 logger.info(f"User selection input: '{selection}'")
                 if not selection:
                     logger.info("User cancelled selection (empty input)")
@@ -1139,13 +1070,13 @@ def upgrade_server(target_version=None, force=False):
             else:
                 logger.info("User skipped downloading newer build")
         show_version_info(selected_version)
-        confirm = input(f"\nAre you sure you want to upgrade from {current_version} to {selected_version}? (y/N): ").strip().upper() or "N"
+        confirm = input("\n" + t("version.upgrade_confirm", current=current_version, selected=selected_version) + " (y/N): ").strip().upper() or "N"
         logger.info(f"Final user confirmation for upgrade: {confirm}")
         if confirm != "Y":
             logger.info("User cancelled upgrade after final confirmation")
             print("Upgrade canceled.\n")
             return
-        print("\nUpgrading server core...")
+        print("\n" + t("version.upgrading_core") + "...")
         core_zip_path = BUNDLES_DIR / selected_version / "core.zip"
         logger.info(f"Core ZIP path for selected version: {core_zip_path}")
         if not core_zip_path.exists():
@@ -1177,10 +1108,10 @@ def upgrade_server(target_version=None, force=False):
                 backup_jar = BASE_DIR / "core.jar.bak"
                 shutil.copy2(SERVER_JAR, backup_jar)
                 logger.info(f"Backed up current core.jar to: {backup_jar}")
-                print("Backed up current core.jar")
+                print(t("version.backed_up_core"))
             shutil.copy2(core_jar_temp, SERVER_JAR)
             logger.info(f"Copied new core.jar from {core_jar_temp} to {SERVER_JAR}")
-            print("\nCore upgraded successfully.")
+            print("\n" + t("version.core_upgraded"))
             config = configparser.ConfigParser()
             config.read(CONFIG_FILE)
             if "SERVER" in config:
@@ -1188,7 +1119,7 @@ def upgrade_server(target_version=None, force=False):
                 with open(CONFIG_FILE, "w") as f:
                     config.write(f)
                 logger.info(f"Updated configuration to version {selected_version}")
-                print(f"Updated configuration to version {selected_version}")
+                print(t("version.config_updated", version=selected_version))
             else:
                 logger.warning("SERVER section not found in config, cannot update version")
         except Exception as e:
@@ -1221,13 +1152,13 @@ def upgrade_server(target_version=None, force=False):
             print("\nPlugins module is not installed; skipping plugin disable step.")
             print('Use "--install plugins" to enable this option.\n')
         logger.info("Server upgrade completed successfully")
-        print("\nServer upgrade completed successfully!")
-        print("Please review your plugin compatibility before starting the server.\n")
+        print("\n" + t("version.upgrade_completed") + "!")
+        print(t("version.plugins_review") + "\n")
     except KeyboardInterrupt:
         logger.warning("Upgrade operation interrupted by user")
-        print("\nUpgrade interrupted by user.\n")
+        print("\n" + t("version.upgrade_interrupted") + "\n")
     except Exception as e:
         logger.error(f"Error during upgrade process: {e}", exc_info=True)
-        print(f"Error during upgrade process: {e}\n")
+        print(t("version.upgrade_error", error=e) + "\n")
     finally:
         _unlock_with_logging("upgrade")

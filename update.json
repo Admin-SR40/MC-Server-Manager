@@ -1,62 +1,62 @@
 {
   "latest_version": "9.0",
   "raw_url": "https://raw.githubusercontent.com/Admin-SR40/MC-Server-Manager/refs/heads/main/start.sh",
-  "date": "2026-08-10",
-  "md5": "880ae445307cb5d496d245a75bfa5fa0",
+  "date": "2026-08-11",
+  "md5": "47da43dd6cff1446ace613f0861e1ec5",
   "modules": {
     "backup": {
       "version": "1.0",
       "url": "https://raw.githubusercontent.com/Admin-SR40/MC-Server-Manager/refs/heads/main/modules/backup.py",
-      "md5": "0dd54add876f183e69d5b8fdae62cf01",
+      "md5": "75716f5c8af33d589b7f953bc5edd969",
       "description": "Version snapshots, backups and rollback",
       "requires": []
     },
     "crash": {
       "version": "1.0",
       "url": "https://raw.githubusercontent.com/Admin-SR40/MC-Server-Manager/refs/heads/main/modules/crash.py",
-      "md5": "ee34b59e9fd3aae4045db4fff90cf0f6",
+      "md5": "07b3e25d69a634dda6884ad90ac65aca",
       "description": "Crash detection, log analysis and crash reports",
       "requires": []
     },
     "init": {
       "version": "1.0",
       "url": "https://raw.githubusercontent.com/Admin-SR40/MC-Server-Manager/refs/heads/main/modules/init.py",
-      "md5": "8dfbf4890f893440ac687f864622d8be",
+      "md5": "84c783dbf4ca73c842f41178dd41b92a",
       "description": "Server initialization and structure standardization",
       "requires": []
     },
     "maintenance": {
       "version": "1.0",
       "url": "https://raw.githubusercontent.com/Admin-SR40/MC-Server-Manager/refs/heads/main/modules/maintenance.py",
-      "md5": "efdb1300f25a0be8c1edb389934b6e66",
+      "md5": "197e8a683a1ace0332ce99e4439c5731",
       "description": "File cleanup and log dump utilities",
       "requires": []
     },
     "players": {
       "version": "1.0",
       "url": "https://raw.githubusercontent.com/Admin-SR40/MC-Server-Manager/refs/heads/main/modules/players.py",
-      "md5": "45ce7b0d0b7a71cf780c9eaeb97a8b11",
+      "md5": "abd34906abac9654aa4aef992558304c",
       "description": "Manage banned players, IP bans and whitelist",
       "requires": []
     },
     "plugins": {
       "version": "1.0",
       "url": "https://raw.githubusercontent.com/Admin-SR40/MC-Server-Manager/refs/heads/main/modules/plugins.py",
-      "md5": "da95253e09c1afc9a5dea297628177d5",
+      "md5": "9c941874e25b13387cac22d00ec1cedc",
       "description": "Plugin management with dependency awareness",
       "requires": []
     },
     "settings": {
       "version": "1.0",
       "url": "https://raw.githubusercontent.com/Admin-SR40/MC-Server-Manager/refs/heads/main/modules/settings.py",
-      "md5": "07db7bccd0eb2d144f6e8ca6e04d1b92",
+      "md5": "11a34024f50c54e596cfa43063ed4c24",
       "description": "Interactive editor for server.properties",
       "requires": []
     },
     "version": {
       "version": "1.0",
       "url": "https://raw.githubusercontent.com/Admin-SR40/MC-Server-Manager/refs/heads/main/modules/version.py",
-      "md5": "0dea40f46680a2b21355df141d2094bc",
+      "md5": "64558ba9c5ae883f20dcfa9b4d8adbeb",
       "description": "Purpur version download, switch and upgrade",
       "requires": [
         "backup",
@@ -66,9 +66,17 @@
     "worlds": {
       "version": "1.0",
       "url": "https://raw.githubusercontent.com/Admin-SR40/MC-Server-Manager/refs/heads/main/modules/worlds.py",
-      "md5": "c86a84161839a42f1aa2079f2051e6e7",
+      "md5": "575ebb69e8af3a1edc232725882d56a7",
       "description": "Manage worlds (reset, backup, restore, import)",
       "requires": []
+    }
+  },
+  "languages": {
+    "zh_CN": {
+      "version": "1.0",
+      "url": "https://raw.githubusercontent.com/Admin-SR40/MC-Server-Manager/refs/heads/main/lang/zh_CN.json",
+      "md5": "725de54ef11bcfd5193e04b2d33c7cc5",
+      "display": "简体中文"
     }
   }
 }
