@@ -305,7 +305,7 @@ def rollback_version():
     print("======================")
     logger.info(f"Displayed {len(backup_list)} available backups")
     try:
-        selection = input("\nPlease select one to rollback: ").strip()
+        selection = input("\n" + t("backup.select_prompt") + " ").strip()
         logger.info(f"User selection input: '{selection}'")
         if not selection:
             logger.info("User cancelled selection (empty input)")

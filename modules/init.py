@@ -39,11 +39,12 @@ show_info = None
 compare_versions = None
 truncate_text = None
 t = None
+center_text = None
 
 
 def bind(ctx):
     global BASE_DIR, CONFIG_FILE, SERVER_JAR, SERVER_PROPERTIES, logger
-    global create_lock, remove_lock, get_device_id, show_info, compare_versions, truncate_text, t
+    global create_lock, remove_lock, get_device_id, show_info, compare_versions, truncate_text, t, center_text
     BASE_DIR = ctx.BASE_DIR
     CONFIG_FILE = ctx.CONFIG_FILE
     SERVER_JAR = ctx.SERVER_JAR
@@ -56,6 +57,7 @@ def bind(ctx):
     compare_versions = ctx.compare_versions
     truncate_text = ctx.truncate_text
     t = ctx.t
+    center_text = ctx.center_text
 
 
 def dispatch(args, ctx):
@@ -227,7 +229,7 @@ def calculate_plugins_memory(enabled_plugins):
                 memory = int(memory * 0.8)
             total_plugin_memory += memory
         except Exception as e:
-            print(f" Error analyzing {plugin_path.name}: {e}")
+            print(t("init.plugin_analyze_error", name=plugin_path.name, error=e))
             total_plugin_memory += 30
     return total_plugin_memory
 
@@ -261,13 +263,13 @@ def validate_memory_allocation(total_mem_mb, allocated_mb, is_container=False):
     else:
         max_allowed = total_mem_mb * 0.9
     if allocated_mb > max_allowed:
-        print(f"Warning: Allocated memory {allocated_mb}MB exceeds recommended limit {max_allowed}MB")
+        print(t("init.memory_warning", allocated=allocated_mb, max=max_allowed))
         if is_container:
             safe_allocation = min(allocated_mb, total_mem_mb * 0.7)
-            print(f"Container environment adjusted to: {safe_allocation}MB")
+            print(t("init.container_adjusted", value=safe_allocation))
             return safe_allocation
         else:
-            print(f"Adjusted to limit: {max_allowed}MB")
+            print(t("init.adjusted_limit", value=max_allowed))
             return max_allowed
     return allocated_mb
 
@@ -403,7 +405,7 @@ def select_server_core(cores, auto_mode=False):
             print(f" {i}. {core['name']} (Version: {core['version']})")
         while True:
             try:
-                choice = input("\nWhich one would you like to use (leave blank for newest): ").strip()
+                choice = input("\n" + t("init.which_core_blank") + " ").strip()
                 if not choice:
                     highest_core = None
                     highest_version = ""
@@ -443,13 +445,13 @@ def select_server_core(cores, auto_mode=False):
 def init_config(prefill_version=None):
     logger.info("Starting manual server initialization")
     print("=" * 50)
-    print(t("init.title").center(50))
+    print(center_text(t("init.title"), 50))
     print("=" * 50)
     if CONFIG_FILE.exists():
         logger.warning("Configuration file already exists, will be overwritten")
         print("\n" + t("init.config_exists"))
         print(t("init.config_will_replace"))
-        confirm = input("\nDo you want to continue? (y/N): ").strip().upper() or "N"
+        confirm = input("\n" + t("init.config_continue") + " (y/N): ").strip().upper() or "N"
         if confirm != "Y":
             logger.info("User cancelled initialization, existing configuration preserved")
             print("\n" + t("init.config_preserved") + "\n")
@@ -493,14 +495,14 @@ def init_config(prefill_version=None):
         if detected_version != "unknown":
             logger.info(f"Detected server version: {detected_version}")
             print("\n" + t("init.detected_version", version=detected_version))
-            use_detected = input("Use this version? (Y/n): ").strip().upper() or "Y"
+            use_detected = input(t("init.use_detected") + " (Y/n): ").strip().upper() or "Y"
             if use_detected == "Y":
                 version = detected_version
                 logger.info("User accepted detected version")
             else:
                 logger.info("User declined detected version, will prompt for version")
                 while True:
-                    version = input("\nEnter Minecraft server version (e.g., 1.21.5 or 1.21): ").strip()
+                    version = input("\n" + t("init.enter_version") + " ").strip()
                     if re.match(r"^\d+\.\d+(\.\d+)?$", version):
                         logger.info(f"User entered version: {version}")
                         break
@@ -509,14 +511,14 @@ def init_config(prefill_version=None):
         else:
             logger.warning("Could not detect version from core.jar")
             while True:
-                version = input("\nEnter Minecraft server version (e.g., 1.21.5 or 1.21): ").strip()
+                version = input("\n" + t("init.enter_version") + " ").strip()
                 if re.match(r"^\d+\.\d+(\.\d+)?$", version):
                     logger.info(f"User entered version: {version}")
                     break
                 logger.warning(f"Invalid version format entered: {version}")
                 print(t("init.invalid_version"))
     while True:
-        ram_input = input("\nSet maximum RAM (e.g., 4096 for 4GB, or 4 for 4GB): ").strip()
+        ram_input = input("\n" + t("init.enter_ram") + " ").strip()
         if ram_input.isdigit():
             ram_value = int(ram_input)
             if ram_value < 256:
@@ -528,7 +530,7 @@ def init_config(prefill_version=None):
             if max_ram < 512:
                 logger.warning(f"Low RAM allocation requested: {max_ram} MB")
                 print(t("init.low_ram_warning"))
-                confirm = input("Continue anyway? (y/N): ").strip().upper() or "N"
+                confirm = input(t("init.continue_anyway") + " (y/N): ").strip().upper() or "N"
                 if confirm == "Y":
                     logger.info("User confirmed low RAM allocation")
                     break
@@ -543,7 +545,7 @@ def init_config(prefill_version=None):
     print("\n" + t("init.allocated_ram", mb=max_ram, gb=max_ram/1024))
     print("\n" + t("init.additional_exclude"))
     print(t("init.exclude_hint"))
-    additional_exclude = input("Enter additional exclusions (comma-separated, leave empty if none): ").strip()
+    additional_exclude = input(t("init.enter_exclusions") + " ").strip()
     if additional_exclude:
         logger.info(f"Additional exclusions entered: {additional_exclude}")
     else:
@@ -560,10 +562,10 @@ def init_config(prefill_version=None):
         print("\n" + format_java_table(java_installations))
         while True:
             try:
-                choice = input(f"\nSelect Java installation (0-{len(java_installations)}): ").strip()
+                choice = input("\n" + t("init.select_java", max=len(java_installations)) + " ").strip()
                 if choice == "0":
                     logger.info("User chose custom Java path")
-                    custom_path = input("\nEnter Java path (can be Java home or bin directory): ").strip()
+                    custom_path = input("\n" + t("init.enter_java_home") + " ").strip()
                     if not custom_path:
                         logger.warning("No custom Java path entered")
                         print(t("init.no_path"))
@@ -594,7 +596,7 @@ def init_config(prefill_version=None):
                 print(t("init.enter_number"))
     print("\n" + t("init.additional_params"))
     print(t("init.params_hint"))
-    additional_params = input("Enter additional parameters (leave empty if none): ").strip()
+    additional_params = input(t("init.enter_params") + " ").strip()
     if additional_params:
         logger.info(f"Additional parameters entered: {additional_params}")
     else:
@@ -630,7 +632,7 @@ def init_config_auto(prefill_version=None):
     logger.info("Starting automatic server initialization")
     start_time = time.time()
     print("=" * 50)
-    print(t("init.title_auto").center(50))
+    print(center_text(t("init.title_auto"), 50))
     print("=" * 50)
     if CONFIG_FILE.exists():
         logger.info("Configuration file already exists, will be overwritten")
@@ -695,10 +697,10 @@ def init_config_auto(prefill_version=None):
     if not available_versions:
         logger.warning("No Java installations found!")
         print("\n" + t("init.no_java_auto") + "!")
-        custom = input("Would you like to specify a custom Java path? (y/N): ").strip().upper() or "N"
+        custom = input(t("init.custom_java_ask") + " ").strip().upper() or "N"
         if custom == "Y":
             while True:
-                custom_path = input("Enter custom Java path: ").strip()
+                custom_path = input(t("init.enter_java_home") + " ").strip()
                 validated = validate_java_path(custom_path)
                 if validated:
                     java_path = validated
@@ -1007,11 +1009,11 @@ def standardize_server_structure():
         return
     try:
         print("\n" + "=" * 43)
-        print(t("init.standardize_title").center(43))
+        print(center_text(t("init.standardize_title"), 43))
         print("=" * 43)
         print("\n" + t("init.standardize_desc1"))
         print(t("init.standardize_desc2"))
-        choice = input("Would you like to continue? (y/N): ").strip().upper() or "N"
+        choice = input(t("init.standardize_confirm") + " (y/N): ").strip().upper() or "N"
         logger.info(f"User confirmation input: {choice}")
         if choice != "Y":
             print("\n" + t("init.standardize_cancelled") + "\n")
@@ -1095,24 +1097,24 @@ def standardize_server_structure():
 
             if jar.name != "core.jar":
                 jar.rename(BASE_DIR / "core.jar")
-                print(f"Renamed {jar.name} to core.jar")
+                print(t("init.renamed_core", name=jar.name))
                 logger.info(f"Renamed jar {jar.name} to core.jar")
             else:
-                print("core.jar already exists")
+                print(t("init.core_exists_short"))
                 logger.info("core.jar already exists, no rename needed")
         else:
-            print("Detected multiple .jar files")
+            print(t("init.multiple_jars"))
             logger.warning("Multiple jar files detected")
             for idx, jar in enumerate(jar_files, 1):
                 print(f" [{idx}] {jar.name}")
                 logger.info(f"Jar candidate [{idx}]: {jar.name}")
             while True:
                 sel = input(
-                    f"\nWhich one would you like to use (1-{len(jar_files)}): "
+                    "\n" + t("init.which_core", max=len(jar_files)) + " "
                 ).strip()
                 logger.info(f"User jar selection input: {sel}")
                 if not sel.isdigit():
-                    print("Invalid input.")
+                    print(t("init.invalid_input"))
                     logger.warning("User provided non-numeric jar selection")
                     continue
                 sel = int(sel)
@@ -1120,7 +1122,7 @@ def standardize_server_structure():
                     selected = jar_files[sel - 1]
                     logger.info(f"User selected jar: {selected.name}")
                     break
-                print("Selection out of range.")
+                print(t("init.selection_out_of_range"))
                 logger.warning("User jar selection out of range")
             target = BASE_DIR / "core.jar"
             try:
@@ -1128,20 +1130,20 @@ def standardize_server_structure():
                     target.unlink()
                     logger.info("Existing core.jar removed before rename")
                 selected.rename(target)
-                print(f"Renamed {selected.name} to core.jar")
+                print(t("init.renamed_core", name=selected.name))
                 logger.info(f"Renamed jar {selected.name} to core.jar")
             except Exception as e:
-                print(f"Failed to rename jar: {e}")
+                print(t("init.rename_failed", error=e))
                 logger.error(f"Failed to rename selected jar {selected.name}: {e}")
         elapsed = time.time() - start_time
-        print(f"\nStandardize completed in {elapsed:.2f}s!\n")
+        print("\n" + t("init.standardize_completed", time=f"{elapsed:.2f}") + "\n")
         logger.info(f"Standardize completed successfully in {elapsed:.2f}s")
-        print("You should initialize your server:")
-        print(" 1. Enter --init")
-        print(" 2. Enter --init auto")
-        print(" 3. Exit without initialization\n")
+        print(t("init.you_should_init"))
+        print(" 1. " + t("version.init_manual"))
+        print(" 2. " + t("version.init_auto"))
+        print(" 3. " + t("version.init_exit") + "\n")
         while True:
-            next_choice = input("Your choice (1-3): ").strip()
+            next_choice = input(t("init.your_choice") + " ").strip()
             logger.info(f"Post-standardize init choice: {next_choice}")
             if next_choice == "1":
                 logger.info("User chose manual initialization")
@@ -1154,12 +1156,12 @@ def standardize_server_structure():
                 init_config_auto()
                 return
             elif next_choice == "3":
-                print("\nExiting without initialization.\n")
+                print("\n" + t("init.exiting_no_init") + "\n")
                 logger.info("User exited without initialization")
                 remove_lock()
                 return
             else:
-                print("Invalid choice.")
+                print(t("init.invalid_choice"))
                 logger.warning("Invalid init choice input")
     finally:
         logger.info("Task lock released, standardize process ended")

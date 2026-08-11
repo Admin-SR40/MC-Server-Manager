@@ -30,11 +30,12 @@ safe_rmtree = None
 format_file_size = None
 _unlock_with_logging = None
 t = None
+center_text = None
 
 
 def bind(ctx):
     global BASE_DIR, logger, create_lock, remove_lock
-    global safe_rmtree, format_file_size, _unlock_with_logging, t
+    global safe_rmtree, format_file_size, _unlock_with_logging, t, center_text
     BASE_DIR = ctx.BASE_DIR
     logger = ctx.logger
     create_lock = ctx.create_lock
@@ -43,6 +44,7 @@ def bind(ctx):
     format_file_size = ctx.format_file_size
     _unlock_with_logging = ctx.unlock_with_logging
     t = ctx.t
+    center_text = ctx.center_text
 
 
 def dispatch(args, ctx):
@@ -135,7 +137,7 @@ def dump_logs():
         if search_terms:
             logger.info(f"Starting log search with terms: {search_terms}")
             print("\n" + "=" * 45)
-            print(t("maintenance.search_title").center(45))
+            print(center_text(t("maintenance.search_title"), 45))
             print("=" * 45)
             print(t("maintenance.searching_for", terms=", ".join(search_terms)))
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -261,7 +263,7 @@ def dump_logs():
         else:
             logger.info("Starting full log dump (no search terms)")
             print("\n" + "=" * 45)
-            print(t("maintenance.dump_title").center(45))
+            print(center_text(t("maintenance.dump_title"), 45))
             print("=" * 45)
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             output_file = BASE_DIR / f"logs_dump_{timestamp}.zip"

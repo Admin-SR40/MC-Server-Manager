@@ -31,11 +31,12 @@ get_uptime = None
 SCRIPT_VERSION = None
 _ctx = None
 t = None
+center_text = None
 
 
 def bind(ctx):
     global BASE_DIR, PLUGINS_DIR, SERVER_PROPERTIES, logger
-    global load_config, get_device_id, get_uptime, SCRIPT_VERSION, _ctx
+    global load_config, get_device_id, get_uptime, SCRIPT_VERSION, _ctx, t, center_text
     BASE_DIR = ctx.BASE_DIR
     PLUGINS_DIR = ctx.PLUGINS_DIR
     SERVER_PROPERTIES = ctx.SERVER_PROPERTIES
@@ -46,6 +47,7 @@ def bind(ctx):
     SCRIPT_VERSION = ctx.SCRIPT_VERSION
     _ctx = ctx
     t = ctx.t
+    center_text = ctx.center_text
 
 
 def dispatch(args, ctx):
@@ -60,9 +62,9 @@ def analyze_server_crash(exit_code, uptime_str=None):
     if uptime_str:
         uptime_display = uptime_str
     if exit_code == 0:
-        print(t("crash.potential").center(50))
+        print(center_text(t("crash.potential"), 50))
     else:
-        print(t("crash.detected").center(50))
+        print(center_text(t("crash.detected"), 50))
     print("=" * 50)
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     if exit_code == 0:
@@ -84,7 +86,7 @@ def analyze_server_crash(exit_code, uptime_str=None):
         print("\n" + t("crash.check_report") + "\n")
     elapsed_time = time.time() - start_time
     logger.info(f"Crash analysis completed in {elapsed_time:.2f}s, report: {report_file}")
-    print(t("crash.completed", time=f"{elapsed_time:.2f}") + "!\n")
+    print(t("crash.completed", time=f"{elapsed_time:.2f}") + "\n")
 
 
 def collect_crash_data(log_file, exit_code, uptime_str=None, crash_time_str=None):
@@ -552,7 +554,7 @@ def check_logs_for_errors():
 
 def ask_user_for_crash_analysis():
     print("\n" + "=" * 61)
-    print(t("crash.possible_title").center(61))
+    print(center_text(t("crash.possible_title"), 61))
     print("=" * 61)
     uptime_seconds, uptime_str, crash_time = get_uptime()
     if uptime_seconds >= 60:
@@ -571,7 +573,7 @@ def ask_user_for_crash_analysis():
         print("\n" + t("crash.analyze_ask"))
         print(t("crash.analyze_yes"))
         print(t("crash.analyze_no"))
-        choice = input("\nEnter your choice (y/N): ").strip().upper() or "N"
+        choice = input("\n" + t("crash.enter_choice") + " ").strip().upper() or "N"
         if choice == 'Y':
             logger.info("User requested crash analysis after normal exit")
             return True
@@ -596,7 +598,7 @@ def handle_server_crash(process, uptime_str=None):
 
 def ask_user_for_interrupt_analysis():
     print("\n" + "=" * 60)
-    print(t("crash.interrupted_title").center(60))
+    print(center_text(t("crash.interrupted_title"), 60))
     print("=" * 60)
     uptime_seconds, uptime_str, crash_time = get_uptime()
     if uptime_seconds >= 60:
@@ -615,7 +617,7 @@ def ask_user_for_interrupt_analysis():
         print("\n" + t("crash.analyze_ask"))
         print(t("crash.analyze_yes"))
         print(t("crash.analyze_no_interrupt"))
-        choice = input("\nEnter your choice (y/N): ").strip().upper() or "N"
+        choice = input("\n" + t("crash.enter_choice") + " ").strip().upper() or "N"
         if choice == 'Y':
             logger.info("User requested interrupt analysis")
             return True

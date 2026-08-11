@@ -27,15 +27,17 @@ SERVER_PROPERTIES = None
 logger = None
 truncate_text = None
 t = None
+center_text = None
 
 
 def bind(ctx):
-    global BASE_DIR, SERVER_PROPERTIES, logger, truncate_text, t
+    global BASE_DIR, SERVER_PROPERTIES, logger, truncate_text, t, center_text
     BASE_DIR = ctx.BASE_DIR
     SERVER_PROPERTIES = ctx.SERVER_PROPERTIES
     logger = ctx.logger
     truncate_text = ctx.truncate_text
     t = ctx.t
+    center_text = ctx.center_text
 
 
 def dispatch(args, ctx):
@@ -111,7 +113,7 @@ def is_online_mode():
         return True
     except Exception as e:
         logger.error(f"Error reading online-mode from server.properties: {e}")
-        print(f"Error reading server.properties: {e}")
+        print(t("players.properties_error", error=e))
         return True
 
 
@@ -166,7 +168,7 @@ def format_list_table(items, list_type):
 def manage_player_lists():
     logger.info("Starting player list management")
     print("\n" + "=" * 50)
-    print(t("players.title").center(50))
+    print(center_text(t("players.title"), 50))
     print("=" * 50)
     print("\n" + t("players.select_list"))
     print(" 1. " + t("players.opt_banned_players"))

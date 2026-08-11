@@ -25,14 +25,16 @@ PLUGINS_DIR = None
 logger = None
 truncate_text = None
 t = None
+center_text = None
 
 
 def bind(ctx):
-    global PLUGINS_DIR, logger, truncate_text, t
+    global PLUGINS_DIR, logger, truncate_text, t, center_text
     PLUGINS_DIR = ctx.PLUGINS_DIR
     logger = ctx.logger
     truncate_text = ctx.truncate_text
     t = ctx.t
+    center_text = ctx.center_text
 
 
 def dispatch(args, ctx):
@@ -53,7 +55,7 @@ def format_plugins_table(plugins):
     version_width = 15
     status_width = 10
     table = []
-    table.append(t("plugins.table_title").center(40))
+    table.append(center_text(t("plugins.table_title"), 40))
     table.append("╔" + "═" * name_width + "╦" + "═" * version_width + "╦" + "═" * status_width + "╗")
     table.append("║" + (" " + t("plugins.col_name")).ljust(name_width) + "║" + (" " + t("plugins.col_version")).ljust(version_width) + "║" + (" " + t("plugins.col_status")).ljust(status_width) + "║")
     table.append("╠" + "═" * name_width + "╬" + "═" * version_width + "╬" + "═" * status_width + "╣")
@@ -259,7 +261,7 @@ def manage_plugins_with_dependencies():
                     print(" 2. " + t("plugins.opt_force"))
                     print(" 3. " + t("plugins.opt_auto"))
                     while True:
-                        choice = input("\nChoose option (1/2/3) or 'C' to cancel: ").strip().upper()
+                        choice = input("\n" + t("plugins.choose_option") + " ").strip().upper()
                         logger.info(f"User dependency resolution choice: {choice}")
                         if choice == '1':
                             logger.info(f"User chose to manually disable dependent plugins first")
@@ -270,7 +272,7 @@ def manage_plugins_with_dependencies():
                             continue
                         elif choice == '2':
                             logger.warning(f"User chose to force disable {plugin['name']}")
-                            confirm = input("Are you sure?\nThis may break other plugins or crash the server! (y/N): ").strip().upper() or "N"
+                            confirm = input(t("plugins.force_confirm") + " (y/N): ").strip().upper() or "N"
                             if confirm == 'Y':
                                 logger.warning(f"User confirmed force disable for {plugin['name']}")
                                 try:
@@ -315,7 +317,7 @@ def manage_plugins_with_dependencies():
                             print(t("plugins.invalid_choice") + "\n")
                 else:
                     logger.info(f"Only soft dependencies found for {plugin['name']}")
-                    confirm = input(f"\nDo you still want to disable {plugin['name']}? (y/N): ").strip().upper() or "N"
+                    confirm = input("\n" + t("plugins.disable_confirm", name=plugin['name']) + " (y/N): ").strip().upper() or "N"
                     logger.info(f"User confirmation for soft dependency disable: {confirm}")   
                     if confirm == 'Y':
                         try:
@@ -394,7 +396,7 @@ def disable_dependency_chain(plugins, target_plugin):
 def analyze_plugin_dependencies_cli():
     logger.info("Starting analyze_plugin_dependencies_cli function")
     print("\n" + "=" * 52)
-    print(t("plugins.analyze_title").center(52))
+    print(center_text(t("plugins.analyze_title"), 52))
     print("=" * 52)
     if not PLUGINS_DIR.exists():
         logger.error("Plugins directory not found: %s", PLUGINS_DIR)

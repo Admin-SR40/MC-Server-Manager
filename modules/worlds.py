@@ -29,11 +29,12 @@ remove_lock = None
 load_config = None
 format_file_size = None
 t = None
+center_text = None
 
 
 def bind(ctx):
     global BASE_DIR, BUNDLES_DIR, WORLDS_DIR, SERVER_PROPERTIES, logger
-    global create_lock, remove_lock, load_config, format_file_size, t
+    global create_lock, remove_lock, load_config, format_file_size, t, center_text
     BASE_DIR = ctx.BASE_DIR
     BUNDLES_DIR = ctx.BUNDLES_DIR
     WORLDS_DIR = ctx.WORLDS_DIR
@@ -44,6 +45,7 @@ def bind(ctx):
     load_config = ctx.load_config
     format_file_size = ctx.format_file_size
     t = ctx.t
+    center_text = ctx.center_text
 
 
 def dispatch(args, ctx):
@@ -70,7 +72,7 @@ def manage_worlds(mode=None):
     try:
         logger.info(f"Starting world management utility (mode: {mode})")
         print("\n" + "=" * 52)
-        print(t("worlds.title").center(52))
+        print(center_text(t("worlds.title"), 52))
         print("=" * 52)
         WORLDS_DIR.mkdir(parents=True, exist_ok=True)
         world_folders = [d for d in WORLDS_DIR.iterdir() if d.is_dir()]
@@ -91,7 +93,7 @@ def manage_worlds(mode=None):
         name_width = 25
         size_width = 11
         status_width = 12
-        print(t("worlds.table_title").center(30))
+        print(center_text(t("worlds.table_title"), 30))
         print("╔" + "═" * name_width + "╦" + "═" * size_width + "╦" + "═" * status_width + "╗")
         print("║" + (" " + t("worlds.col_worlds")).ljust(name_width) +
               "║" + (" " + t("worlds.col_size")).ljust(size_width) +
@@ -355,7 +357,7 @@ def backup_worlds(world_info):
 def import_world():
     logger.info("Starting world import utility")
     print("\n" + "=" * 50)
-    print(t("worlds.import_title").center(50))
+    print(center_text(t("worlds.import_title"), 50))
     print("=" * 50)
     while True:
         zip_path_input = input("\n" + t("worlds.enter_zip") + " ").strip()

@@ -19,14 +19,16 @@ BASE_DIR = None
 SERVER_PROPERTIES = None
 logger = None
 t = None
+center_text = None
 
 
 def bind(ctx):
-    global BASE_DIR, SERVER_PROPERTIES, logger, t
+    global BASE_DIR, SERVER_PROPERTIES, logger, t, center_text
     BASE_DIR = ctx.BASE_DIR
     SERVER_PROPERTIES = ctx.SERVER_PROPERTIES
     logger = ctx.logger
     t = ctx.t
+    center_text = ctx.center_text
 
 
 def dispatch(args, ctx):
@@ -38,7 +40,7 @@ def edit_server_settings():
     if not SERVER_PROPERTIES.exists():
         logger.error("Server properties file not found")
         print("\n" + "=" * 50)
-        print(t("settings.title").center(50))
+        print(center_text(t("settings.title"), 50))
         print("=" * 50)
         print("\n" + t("settings.error_not_found"))
         print(t("settings.hint_start"))
@@ -46,7 +48,7 @@ def edit_server_settings():
         return
     logger.info("Starting server configuration editor")
     print("\n" + "=" * 50)
-    print(t("settings.title").center(50))
+    print(center_text(t("settings.title"), 50))
     print("=" * 50)
     properties = {}
     try:
@@ -172,7 +174,7 @@ def edit_server_settings():
     logger.info("Entering server configuration editor loop")
     edited_settings = []
     while True:
-        print("\n" + t("settings.table_title").center(45))
+        print("\n" + center_text(t("settings.table_title"), 45))
         print("╔" + "═" * 35 + "╦" + "═" * 26 + "╗")
         print("║ " + t("settings.col_setting").ljust(33) + " ║ " + t("settings.col_value").ljust(23) + " ║")
         print("╠" + "═" * 35 + "╬" + "═" * 26 + "╣")
