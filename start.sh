@@ -2516,7 +2516,7 @@ def check_self_update(force=False):
             logger.info("User canceled core update")
             print(t("core.update.core_canceled") + "\n")
     else:
-        print(t("core.update.core_uptodate"))
+        print("\n" + t("core.update.core_uptodate"))
     update_installed_modules(update_info, force=force)
     update_language_files(update_info, force=force)
     return True
@@ -2871,6 +2871,7 @@ def select_modules_interactive(modules):
         requires = f" (requires: {', '.join(info.get('requires', []))})" if info.get("requires") else ""
         print(f"{i:2d}. {name:<12} - {info.get('description', '')}{requires}")
     print("=" * 52)
+    print("")
     print(t("core.install.select_prompt"))
     choice = input("\n" + t("core.install.selection") + " ").strip().lower()
     if not choice:
@@ -2965,10 +2966,10 @@ def run_install_flow(args=None, first_run=False):
 
 def update_installed_modules(update_info, force=False):
     logger.info(f"Checking installed modules for updates (force={force})")
-    print(t("core.update.modules_check"))
+    print("\n" + t("core.update.modules_check"))
     installed = read_modules_json()
     if not installed:
-        print(t("core.update.modules_none") + "\n")
+        print("\n" + t("core.update.modules_none"))
         return
     updates = []
     cloud_modules = update_info.get("modules", {})
@@ -2982,16 +2983,17 @@ def update_installed_modules(update_info, force=False):
         if force or local_version != cloud.get("version") or local_md5 != cloud.get("md5"):
             updates.append((name, cloud))
     if not updates:
-        print(t("core.update.modules_uptodate") + "\n")
+        print("\n" + t("core.update.modules_uptodate"))
         return
     print("\n" + t("core.update.modules_available"))
     for name, cloud in updates:
         local = installed.get(name, {})
         local_version = local.get("version") if isinstance(local, dict) else "?"
         print(f" - {name}: {local_version} -> {cloud.get('version')}")
-    confirm = input("\n" + t("core.update.modules_ask") + " ").strip().upper() or "N"
+    print("")
+    confirm = input(t("core.update.modules_ask") + " ").strip().upper() or "N"
     if confirm != "Y":
-        print(t("core.update.modules_canceled") + "\n")
+        print("\n" + t("core.update.modules_canceled"))
         return
     registry = dict(installed)
     updated_count = 0
@@ -3008,7 +3010,7 @@ def update_installed_modules(update_info, force=False):
     print("")
 
 def update_language_files(update_info, force=False):
-    print(t("core.update.languages_check"))
+    print("\n" + t("core.update.languages_check"))
     installed = get_installed_languages()
     remote = get_remote_languages(update_info)
     outdated = []
@@ -3028,14 +3030,17 @@ def update_language_files(update_info, force=False):
         if force or str(local_version) != str(info.get("version")):
             outdated.append((code, info, local_version))
     if not outdated:
-        print(t("core.update.languages_uptodate") + "\n")
+        print("\n" + t("core.update.languages_uptodate"))
+        print("")
         return
-    print(t("core.update.languages_available"))
+    print("\n" + t("core.update.languages_available"))
     for code, info, local_version in outdated:
         print(f" - {code}: {local_version} -> {info.get('version')}")
+    print("")
     confirm = input(t("core.update.languages_ask") + " ").strip().upper() or "N"
     if confirm != "Y":
-        print(t("core.update.languages_canceled") + "\n")
+        print("\n" + t("core.update.languages_canceled"))
+        print("")
         return
     for code, info, _ in outdated:
         print(t("core.lang.downloading", code=code))
