@@ -28,16 +28,18 @@ logger = None
 truncate_text = None
 t = None
 center_text = None
+pad_text = None
 
 
 def bind(ctx):
-    global BASE_DIR, SERVER_PROPERTIES, logger, truncate_text, t, center_text
+    global BASE_DIR, SERVER_PROPERTIES, logger, truncate_text, t, center_text, pad_text
     BASE_DIR = ctx.BASE_DIR
     SERVER_PROPERTIES = ctx.SERVER_PROPERTIES
     logger = ctx.logger
     truncate_text = ctx.truncate_text
     t = ctx.t
     center_text = ctx.center_text
+    pad_text = ctx.pad_text
 
 
 def dispatch(args, ctx):
@@ -131,15 +133,13 @@ def format_list_table(items, list_type):
         table = []
         table.append(t("players.table_banned_ips"))
         table.append("╔" + "═" * name_width + "╦" + "═" * reason_width + "╗")
-        table.append("║" + (" " + t("players.col_ip")).ljust(name_width) + "║" + (" " + t("players.col_reason")).ljust(reason_width) + "║")
+        table.append("║" + (" " + pad_text(t("players.col_ip"), name_width - 1, True)) + "║" + (" " + pad_text(t("players.col_reason"), reason_width - 1, True)) + "║")
         table.append("╠" + "═" * name_width + "╬" + "═" * reason_width + "╣")
         for i, item in enumerate(items, 1):
             ip = item.get("ip", "Unknown")
             reason = item.get("reason", "No reason")
-            ip_display = truncate_text(f"{i}. {ip}", name_width-1)
-            reason_display = truncate_text(reason, reason_width-1)
-            row = (f"║ {ip_display.ljust(name_width-1)}"
-                   f"║ {reason_display.ljust(reason_width-1)}║")
+            row = (f"║ {pad_text(f'{i}. {ip}', name_width-1, True)}"
+                   f"║ {pad_text(reason, reason_width-1, True)}║")
             table.append(row)
         table.append("╚" + "═" * name_width + "╩" + "═" * reason_width + "╝")
     else:
@@ -151,15 +151,13 @@ def format_list_table(items, list_type):
         else:
             table.append(t("players.table_whitelist"))
         table.append("╔" + "═" * name_width + "╦" + "═" * uuid_width + "╗")
-        table.append("║" + (" " + t("players.col_name")).ljust(name_width) + "║" + (" " + t("players.col_uuid")).ljust(uuid_width) + "║")
+        table.append("║" + (" " + pad_text(t("players.col_name"), name_width - 1, True)) + "║" + (" " + pad_text(t("players.col_uuid"), uuid_width - 1, True)) + "║")
         table.append("╠" + "═" * name_width + "╬" + "═" * uuid_width + "╣")
         for i, item in enumerate(items, 1):
             name = item.get("name", "Unknown")
             uuid = item.get("uuid", "Unknown")
-            name_display = truncate_text(f"{i}. {name}", name_width-1)
-            uuid_display = truncate_text(uuid, uuid_width-1)
-            row = (f"║ {name_display.ljust(name_width-1)}"
-                   f"║ {uuid_display.ljust(uuid_width-1)}║")
+            row = (f"║ {pad_text(f'{i}. {name}', name_width-1, True)}"
+                   f"║ {pad_text(uuid, uuid_width-1, True)}║")
             table.append(row)
         table.append("╚" + "═" * name_width + "╩" + "═" * uuid_width + "╝")
     return "\n".join(table)

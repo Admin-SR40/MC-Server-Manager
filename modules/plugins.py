@@ -26,15 +26,17 @@ logger = None
 truncate_text = None
 t = None
 center_text = None
+pad_text = None
 
 
 def bind(ctx):
-    global PLUGINS_DIR, logger, truncate_text, t, center_text
+    global PLUGINS_DIR, logger, truncate_text, t, center_text, pad_text
     PLUGINS_DIR = ctx.PLUGINS_DIR
     logger = ctx.logger
     truncate_text = ctx.truncate_text
     t = ctx.t
     center_text = ctx.center_text
+    pad_text = ctx.pad_text
 
 
 def dispatch(args, ctx):
@@ -57,18 +59,15 @@ def format_plugins_table(plugins):
     table = []
     table.append(center_text(t("plugins.table_title"), 40))
     table.append("╔" + "═" * name_width + "╦" + "═" * version_width + "╦" + "═" * status_width + "╗")
-    table.append("║" + (" " + t("plugins.col_name")).ljust(name_width) + "║" + (" " + t("plugins.col_version")).ljust(version_width) + "║" + (" " + t("plugins.col_status")).ljust(status_width) + "║")
+    table.append("║" + (" " + pad_text(t("plugins.col_name"), name_width - 1, True)) + "║" + (" " + pad_text(t("plugins.col_version"), version_width - 1, True)) + "║" + (" " + pad_text(t("plugins.col_status"), status_width - 1, True)) + "║")
     table.append("╠" + "═" * name_width + "╬" + "═" * version_width + "╬" + "═" * status_width + "╣")
     for i, plugin in enumerate(plugins, 1):
         name = f"{i}. {plugin['name']}"
         version = plugin['version']
         status = t("plugins.enabled") if plugin['enabled'] else t("plugins.disabled")
-        name_display = truncate_text(name, name_width-1)
-        version_display = truncate_text(version, version_width-1)
-        status_display = truncate_text(status, status_width-1)
-        row = (f"║ {name_display.ljust(name_width-1)}"
-               f"║ {version_display.ljust(version_width-1)}"
-               f"║ {status_display.ljust(status_width-1)}║")
+        row = (f"║ {pad_text(name, name_width-1, True)}"
+               f"║ {pad_text(version, version_width-1, True)}"
+               f"║ {pad_text(status, status_width-1, True)}║")
         table.append(row)
     table.append("╚" + "═" * name_width + "╩" + "═" * version_width + "╩" + "═" * status_width + "╝")
     return "\n".join(table)

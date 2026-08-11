@@ -20,15 +20,17 @@ SERVER_PROPERTIES = None
 logger = None
 t = None
 center_text = None
+pad_text = None
 
 
 def bind(ctx):
-    global BASE_DIR, SERVER_PROPERTIES, logger, t, center_text
+    global BASE_DIR, SERVER_PROPERTIES, logger, t, center_text, pad_text
     BASE_DIR = ctx.BASE_DIR
     SERVER_PROPERTIES = ctx.SERVER_PROPERTIES
     logger = ctx.logger
     t = ctx.t
     center_text = ctx.center_text
+    pad_text = ctx.pad_text
 
 
 def dispatch(args, ctx):
@@ -176,7 +178,7 @@ def edit_server_settings():
     while True:
         print("\n" + center_text(t("settings.table_title"), 45))
         print("╔" + "═" * 35 + "╦" + "═" * 26 + "╗")
-        print("║ " + t("settings.col_setting").ljust(33) + " ║ " + t("settings.col_value").ljust(23) + " ║")
+        print("║ " + pad_text(t("settings.col_setting"), 33) + " ║ " + pad_text(t("settings.col_value"), 23) + " ║")
         print("╠" + "═" * 35 + "╬" + "═" * 26 + "╣")
         for i, setting in enumerate(settings_config, 1):
             key = setting['key']
@@ -185,11 +187,7 @@ def edit_server_settings():
                 current_value = t("settings.empty")
             name_display = f"{i}. {t('settings.name.' + key)}"
             value_display = str(current_value)
-            if len(name_display) > 34:
-                name_display = name_display[:31] + "..."
-            if len(value_display) > 24:
-                value_display = value_display[:21] + "..."
-            print(f"║ {name_display.ljust(34)}║ {value_display.ljust(24)} ║")
+            print(f"║ {pad_text(name_display, 34, True)}║ {pad_text(value_display, 24, True)} ║")
         print("╚" + "═" * 35 + "╩" + "═" * 26 + "╝")
         print("\n" + t("settings.prompt_number"))
         try:

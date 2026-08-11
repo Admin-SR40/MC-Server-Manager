@@ -914,6 +914,13 @@
     "init.memory_warning": "警告：分配内存 {allocated}MB 超过建议上限 {max}MB",
     "init.container_adjusted": "容器环境已调整为：{value}MB",
     "init.adjusted_limit": "已调整为上限：{value}MB",
-    "init.plugin_analyze_error": "分析 {name} 失败：{error}"
+    "init.plugin_analyze_error": "分析 {name} 失败：{error}",
+    "init.java_selection_title": "Java 选择",
+    "init.col_path": "路径",
+    "init.col_version": "版本",
+    "init.col_vendor": "厂商",
+    "init.custom_java": "0. 自定义 Java",
+    "init.java_unknown": "Java ?",
+    "init.unknown": "未知"
   }
 }

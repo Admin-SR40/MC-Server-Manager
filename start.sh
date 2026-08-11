@@ -875,6 +875,13 @@ DEFAULT_STRINGS = {
     "init.container_adjusted": "Container environment adjusted to: {value}MB",
     "init.adjusted_limit": "Adjusted to limit: {value}MB",
     "init.plugin_analyze_error": "Error analyzing {name}: {error}",
+    "init.java_selection_title": "Java Selection",
+    "init.col_path": "Path",
+    "init.col_version": "Version",
+    "init.col_vendor": "Vendor",
+    "init.custom_java": "0. Custom Java",
+    "init.java_unknown": "Java ?",
+    "init.unknown": "Unknown",
     "init.multiple_jars": "Detected multiple .jar files",
     "init.core_exists_short": "core.jar already exists",
     "init.invalid_input": "Invalid input.",
@@ -1078,6 +1085,28 @@ def center_text(text, width):
     pad = max(0, width - display_width(text))
     left = pad // 2
     return " " * left + text + " " * (pad - left)
+
+def truncate_display(text, max_width):
+    """Truncate text by display width (CJK chars count as 2 columns)."""
+    text = str(text)
+    if display_width(text) <= max_width:
+        return text
+    result = ""
+    width = 0
+    for char in text:
+        char_width = 2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
+        if width + char_width + 3 > max_width:
+            break
+        result += char
+        width += char_width
+    return result + "..."
+
+def pad_text(text, width, truncate=False):
+    """Right-pad (or truncate) text by display width."""
+    text = str(text)
+    if truncate and display_width(text) > width:
+        text = truncate_display(text, width)
+    return text + " " * max(0, width - display_width(text))
 
 
 def get_script_config():
@@ -3098,6 +3127,8 @@ class CoreContext:
         self.t = t
         self.require_module = require_module
         self.center_text = center_text
+        self.pad_text = pad_text
+        self.truncate_display = truncate_display
 
     def get_module(self, name):
         return load_module(name)

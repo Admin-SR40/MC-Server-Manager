@@ -40,11 +40,12 @@ compare_versions = None
 truncate_text = None
 t = None
 center_text = None
+pad_text = None
 
 
 def bind(ctx):
     global BASE_DIR, CONFIG_FILE, SERVER_JAR, SERVER_PROPERTIES, logger
-    global create_lock, remove_lock, get_device_id, show_info, compare_versions, truncate_text, t, center_text
+    global create_lock, remove_lock, get_device_id, show_info, compare_versions, truncate_text, t, center_text, pad_text
     BASE_DIR = ctx.BASE_DIR
     CONFIG_FILE = ctx.CONFIG_FILE
     SERVER_JAR = ctx.SERVER_JAR
@@ -58,6 +59,7 @@ def bind(ctx):
     truncate_text = ctx.truncate_text
     t = ctx.t
     center_text = ctx.center_text
+    pad_text = ctx.pad_text
 
 
 def dispatch(args, ctx):
@@ -77,24 +79,20 @@ def format_java_table(java_installations):
     version_width = 9
     vendor_width = 11
     table = []
-    table.append("                   - Java Selection -")
+    table.append(center_text(t("init.java_selection_title"), 40))
     table.append("╔" + "═" * path_width + "╦" + "═" * version_width + "╦" + "═" * vendor_width + "╗")
-    table.append("║" + " Path".ljust(path_width-1) + " ║" + " Version".ljust(version_width-1) + " ║" + " Vendor".ljust(vendor_width-1) + " ║")
+    table.append("║" + (" " + pad_text(t("init.col_path"), path_width - 2, True)) + " ║" + (" " + pad_text(t("init.col_version"), version_width - 2, True)) + " ║" + (" " + pad_text(t("init.col_vendor"), vendor_width - 2, True)) + " ║")
     table.append("╠" + "═" * path_width + "╬" + "═" * version_width + "╬" + "═" * vendor_width + "╣")
     for i, install in enumerate(java_installations, 1):
         path = f"{i}. {install['path']}"
         version = f"Java {install['version']}"
         vendor = install['vendor']
-        path_display = truncate_text(path, path_width-1)
-        version_display = truncate_text(version, version_width-1)
-        vendor_display = truncate_text(vendor, vendor_width-1)
-        row = (f"║ {path_display.ljust(path_width-1)}"
-               f"║ {version_display.ljust(version_width-1)}"
-               f"║ {vendor_display.ljust(vendor_width-1)}║")
+        row = (f"║ {pad_text(path, path_width-1, True)}"
+               f"║ {pad_text(version, version_width-1, True)}"
+               f"║ {pad_text(vendor, vendor_width-1, True)}║")
         table.append(row)
-    custom_path = "0. Custom Java"
-    custom_path_display = truncate_text(custom_path, path_width-1)
-    table.append(f"║ {custom_path_display.ljust(path_width-1)}║ {'Java ?'.ljust(version_width-1)}║ {'Unknown'.ljust(vendor_width-1)}║")
+    custom_path = t("init.custom_java")
+    table.append(f"║ {pad_text(custom_path, path_width-1, True)}║ {pad_text(t('init.java_unknown'), version_width-1, True)}║ {pad_text(t('init.unknown'), vendor_width-1, True)}║")
     table.append("╚" + "═" * path_width + "╩" + "═" * version_width + "╩" + "═" * vendor_width + "╝")
     return "\n".join(table)
 

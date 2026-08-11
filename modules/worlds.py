@@ -30,11 +30,12 @@ load_config = None
 format_file_size = None
 t = None
 center_text = None
+pad_text = None
 
 
 def bind(ctx):
     global BASE_DIR, BUNDLES_DIR, WORLDS_DIR, SERVER_PROPERTIES, logger
-    global create_lock, remove_lock, load_config, format_file_size, t, center_text
+    global create_lock, remove_lock, load_config, format_file_size, t, center_text, pad_text
     BASE_DIR = ctx.BASE_DIR
     BUNDLES_DIR = ctx.BUNDLES_DIR
     WORLDS_DIR = ctx.WORLDS_DIR
@@ -46,6 +47,7 @@ def bind(ctx):
     format_file_size = ctx.format_file_size
     t = ctx.t
     center_text = ctx.center_text
+    pad_text = ctx.pad_text
 
 
 def dispatch(args, ctx):
@@ -95,20 +97,20 @@ def manage_worlds(mode=None):
         status_width = 12
         print(center_text(t("worlds.table_title"), 30))
         print("╔" + "═" * name_width + "╦" + "═" * size_width + "╦" + "═" * status_width + "╗")
-        print("║" + (" " + t("worlds.col_worlds")).ljust(name_width) +
-              "║" + (" " + t("worlds.col_size")).ljust(size_width) +
-              "║" + (" " + t("worlds.col_status")).ljust(status_width) + "║")
+        print("║" + (" " + pad_text(t("worlds.col_worlds"), name_width - 1, True)) +
+              "║" + (" " + pad_text(t("worlds.col_size"), size_width - 1, True)) +
+              "║" + (" " + pad_text(t("worlds.col_status"), status_width - 1, True)) + "║")
         print("╠" + "═" * name_width + "╬" + "═" * size_width + "╬" + "═" * status_width + "╣")
         if world_info:
             for i, (world_folder, size, status) in enumerate(world_info, 1):
                 name_display = f"{i}. {world_folder.name}"
-                print(f"║ {name_display:<{name_width - 1}}"
-                      f"║ {format_file_size(size):<{size_width - 1}}"
-                      f"║ {status:<{status_width - 1}}║")
+                print(f"║ {pad_text(name_display, name_width - 1, True)}"
+                      f"║ {pad_text(format_file_size(size), size_width - 1, True)}"
+                      f"║ {pad_text(status, status_width - 1, True)}║")
             print("╠" + "═" * name_width + "╬" + "═" * size_width + "╬" + "═" * status_width + "╣")
-            print(f"║ {'0. ' + t('worlds.all'):<{name_width - 1}}║ {format_file_size(total_size):<{size_width - 1}}║ {t('worlds.all_worlds'):<{status_width - 1}}║")
+            print(f"║ {pad_text('0. ' + t('worlds.all'), name_width - 1, True)}║ {pad_text(format_file_size(total_size), size_width - 1, True)}║ {pad_text(t('worlds.all_worlds'), status_width - 1, True)}║")
         else:
-            print(f"║ {t('worlds.no_worlds'):<{name_width - 1}}║ {'0 B':<{size_width - 1}}║ {t('worlds.none'):<{status_width - 1}}║")
+            print(f"║ {pad_text(t('worlds.no_worlds'), name_width - 1, True)}║ {pad_text('0 B', size_width - 1, True)}║ {pad_text(t('worlds.none'), status_width - 1, True)}║")
         print("╚" + "═" * name_width + "╩" + "═" * size_width + "╩" + "═" * status_width + "╝")
         logger.info(f"Total world size: {format_file_size(total_size)} across {len(world_info)} worlds")
         if mode == 'import':
