@@ -845,23 +845,24 @@ def load_language(code):
     global CURRENT_LANG, LANG_DATA
     CURRENT_LANG = "en"
     LANG_DATA = {}
-    if code and code != "en":
+    if code:
         path = LANG_DIR / f"{code}.json"
-        if path.exists():
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                strings = data.get("strings", {})
-                if isinstance(strings, dict):
-                    LANG_DATA = strings
-                    CURRENT_LANG = code
-                    logger.info(f"Loaded language pack: {code}")
-                else:
-                    logger.warning(f"Invalid language pack (missing strings): {path}")
-            except Exception as e:
-                logger.warning(f"Could not load language pack {path}: {e}")
-        else:
-            logger.warning(f"Language pack not found: {path}")
+        if code != "en" or path.exists():
+            if path.exists():
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    strings = data.get("strings", {})
+                    if isinstance(strings, dict):
+                        LANG_DATA = strings
+                        CURRENT_LANG = code
+                        logger.info(f"Loaded language pack: {code}")
+                    else:
+                        logger.warning(f"Invalid language pack (missing strings): {path}")
+                except Exception as e:
+                    logger.warning(f"Could not load language pack {path}: {e}")
+            else:
+                logger.warning(f"Language pack not found: {path}")
     else:
         logger.info("Using default language: en")
 
@@ -884,11 +885,14 @@ def get_installed_languages():
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                langs.append({
-                    "code": data.get("lang", path.stem),
-                    "display": data.get("display", path.stem),
-                    "path": path,
-                })
+                code = data.get("lang", path.stem)
+                display = data.get("display", path.stem)
+                existing = next((item for item in langs if item["code"] == code), None)
+                if existing:
+                    existing["display"] = display
+                    existing["path"] = path
+                else:
+                    langs.append({"code": code, "display": display, "path": path})
             except Exception as e:
                 logger.warning(f"Invalid language file {path}: {e}")
     return langs
@@ -1019,7 +1023,8 @@ def cmd_lang(args):
         current = next((item for item in installed if item["code"] == CURRENT_LANG), None)
         if current:
             current_display = current["display"]
-    print(t("core.lang.current", display=current_display, code=CURRENT_LANG))
+    print("\n" + t("core.lang.current", display=current_display, code=CURRENT_LANG))
+    print()
     print(t("core.lang.available"))
     for item in installed:
         marker = " *" if item["code"] == CURRENT_LANG else ""
@@ -1028,6 +1033,7 @@ def cmd_lang(args):
     for code, info in sorted(remote.items()):
         if not any(item["code"] == code for item in installed):
             print(f" - {info.get('display', code)} ({code})")
+    print("")
 
 
 def safe_rmtree(path):

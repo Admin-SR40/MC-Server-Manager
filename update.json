@@ -2,7 +2,7 @@
   "latest_version": "9.0",
   "raw_url": "https://raw.githubusercontent.com/Admin-SR40/MC-Server-Manager/refs/heads/main/start.sh",
   "date": "2026-08-11",
-  "md5": "47da43dd6cff1446ace613f0861e1ec5",
+  "md5": "e6ae22d1d68ff923ef44370136301815",
   "modules": {
     "backup": {
       "version": "1.0",
